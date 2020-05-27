@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<package>
+<job>
+    <script language="JavaScript" src="src/lib/es5-shim.js"></script>
+    <script language="JavaScript" src="src/lib/es5-sham.js"></script>
+    <script language="JavaScript" src="src/lib/json3.js"></script>
+    <script language="JavaScript">var global = this;</script>
+    <script language="JavaScript" src="src/lib/es6-shim.js"></script>
+    <script language="JavaScript" src="src/lib/es6-sham.js"></script>
+    <script language="JavaScript" src="src/lib/lodash.js"></script>
+    <script language="JavaScript" src="src/utilities.js"></script>
+    <script language="JavaScript" src="src/constants.js"></script>
+    <script language="JavaScript" src="src/CLCommon.js"></script>
+    <script language="JavaScript" src="src/TXT2JSON.js"></script>
+</job>
+</package>
