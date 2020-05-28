@@ -3,6 +3,8 @@
 var verify = true;    // 十分使って問題が一度も起きないようであればverifyしないようにする。こういうのは wsf に書くべきか
 var compress = true;    // XXX: 一旦ここで。最終的には設定ファイルとかから読むように
 
+var repositoryFileOnly = true;
+
 function Error(message)
 {
     shell.Popup(message, 0, "エラー", ICON_EXCLA);
@@ -188,7 +190,12 @@ function changeSetToReadableString(changeSet, data)
         message = "現在の状態を Revision 0 としてバージョン管理を開始します。\nよろしければOKボタンを押してください。\n";
     }
     else {
-        message = "以下の変更を Revision " + history.head + " としてコミットします。\nよろしければOKボタンを押してください。\n";
+        if (repositoryFileOnly) {
+            message = "以下の変更を Revision " + history.head + " として repository ファイルを出力します。\nよろしければOKボタンを押してください。\n";
+        }
+        else {
+            message = "以下の変更を Revision " + history.head + " としてコミットします。\nよろしければOKボタンを押してください。\n";
+        }
         message += "\n";
         message += changeSetToReadableString(changeSet, history.data);
     }
@@ -200,6 +207,7 @@ function changeSetToReadableString(changeSet, data)
     }
 })();
 
+if (!repositoryFileOnly || history.head === 0) {
 
 if (!historySheet)
 {
@@ -274,6 +282,8 @@ function getRevisionedExcelBaseFileName(revision, filePath)
 
 book.SaveAs(getRevisionedExcelBaseFileName(history.head, filePath));
 
+}
+
 /**/
 finalizeExcel();
 /*/
@@ -301,7 +311,12 @@ var endMessage;
 
 // revision 0 の場合、 repo ファイルは不要
 if (history.head > 0) {
-    endMessage = "変更を Revision " + history.head + " としてコミットしました\n";
+    if (repositoryFileOnly) {
+        endMessage = "変更を Revision " + history.head + " として ";
+    }
+    else {
+        endMessage = "変更を Revision " + history.head + " としてコミットしました\n";
+    }
     (function() {
         var outFilename = getHistoryJSONBaseFileName(history);
         var fso = new ActiveXObject( "Scripting.FileSystemObject" );
