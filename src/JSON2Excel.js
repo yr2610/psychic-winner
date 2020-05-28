@@ -1037,10 +1037,24 @@ function render(sheet, nodeH1, checkSheetData)
 
         MergeULCells(cellUL, mergeCellMap);
 
+        // コメント画像のサイズが AutoFit で崩れるようになったので、対処
+        var pictureRects = [];
+        for (var i = 0; i < sheet.Comments.Count; i++) {
+            var commentShape = sheet.Comments(1+i).Shape;
+            pictureRects.push({ width: commentShape.Width, height: commentShape.Height });
+        }
+
         // autofitはセルをマージした後にやる
         rangeToAutoFitColumns.Columns.AutoFit();
         // FIXME: H2が存在しない場合にデフォの確認欄がautofitされてるっぽい
         cellUL.Resize(totalRows, totalItemWidth).Rows.AutoFit();
+
+        for (var i = 0; i < sheet.Comments.Count; i++) {
+            var commentShape = sheet.Comments(1+i).Shape;
+            var rect = pictureRects[i];
+            commentShape.Width = rect.width;
+            commentShape.Height = rect.height;
+        }
 
     })();}
 }
