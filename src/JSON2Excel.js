@@ -1035,14 +1035,16 @@ function render(sheet, nodeH1, checkSheetData)
         // マージ前に保存
         var checkCellOrigin = cellUL.Offset(0, totalItemWidth);
 
-        MergeULCells(cellUL, mergeCellMap);
-
         // コメント画像のサイズが AutoFit で崩れるようになったので、対処
         var pictureRects = [];
         for (var i = 0; i < sheet.Comments.Count; i++) {
             var commentShape = sheet.Comments(1+i).Shape;
             pictureRects.push({ width: commentShape.Width, height: commentShape.Height });
         }
+
+//        betterAutoFit(cellUL, mergeCellMap);
+
+        MergeULCells(cellUL, mergeCellMap);
 
         // autofitはセルをマージした後にやる
         rangeToAutoFitColumns.Columns.AutoFit();
@@ -1058,6 +1060,144 @@ function render(sheet, nodeH1, checkSheetData)
 
     })();}
 }
+
+// 扱いやすい形に変換
+function mergeCellMapToWidthMap(mergeCellMap) {
+    var result = [];
+    var height = mergeCellMap.length;
+    if (height === 0) {
+        return;
+    }
+    var maxWidth = 0;
+    for (var y = 0; y < height; y++) {
+        var buf = [];
+        var width = mergeCellMap[y].length;
+        var id0 = mergeCellMap[y][x0];
+        var x0 = 0;
+        buf[x0] = 1;
+        maxWidth = Math.max(maxWidth, width);
+        for (var x = 1; x < width; x++) {
+            var id = mergeCellMap[y][x];
+            if (id === id0) {
+                buf[x0]++;
+                buf[x] = 0;
+            }
+            else {
+                id0 = id;
+                x0 = x;
+                buf[x0] = 1;
+            }
+        }
+        //buf.pop();  // 番兵を削除
+        result.push(buf);
+    }
+    // 番兵を追加
+    result.push(_.fill(Array(maxWidth), 0));
+
+    return result;
+}
+
+function betterAutoFit(cellOrigin, mergeCellMap) {
+    widthMap = mergeCellMapToWidthMap(mergeCellMap);
+    var height = widthMap.length;
+    if (height === 0) {
+        return;
+    }
+    var width = 0;
+    for (var y = 0; y < height; y++) {
+        width = Math.max(width, widthMap[y].length);
+    }
+
+    //for (var x = 0; x < width; x++) {
+    //    var rowList = [];
+    //    for (var y = 0; y < height; y++) {
+    //        var w = widthMap[y][x];
+    //        if (_.isUndefined(w) || w === 0) {
+    //            continue;
+    //        }
+    //        if (_.isUndefined(rowList[w - 1])) {
+    //            rowList[w - 1] = [];
+    //        }
+    //        rowList[w - 1].push(y);
+    //    }
+    //    // TODO: 比率が高い幅を優先もしくは重視した方が良い感じになるかも
+    //    ;;;
+    //}
+
+    for (var x = 0; x < width; x++) {
+        var range = null;
+        for (var y = 0; y < height; y++) {
+            var w = widthMap[y][x];
+            if (w !== 1) {
+                continue;
+            }
+
+            var y0 = y;
+            y++;
+            // 番兵がいるので y < height 不要
+            for (;; y++) {
+                if (widthMap[y][x] === 1) {
+                    continue;
+                }
+                var subRange = cellOrigin.Offset(y0, x);
+                var h = y - y0;
+                // 連続してるなら一塊にして扱う
+                if (h >= 2) {
+                    try {
+                        subRange.Resize(1, h);
+                    }
+                    catch(e) {
+                        WScript.Echo(h.toString());
+                        throw e;
+                    }
+                }
+                range = (range !== null) ? excel.Union(range, subRange) : subRange;
+                break;
+            }
+        }
+        range.Columns.AutoFit();
+    }
+}
+
+//function betterAutoFit(cellOrigin, mergeCellMap) {
+//    var height = mergeCellMap.length;
+//    if (height === 0) {
+//        return;
+//    }
+//    var width = mergeCellMap[0].length;
+//
+//    // まずはマージされないセル基準で幅をautofit
+//    var autoFitColumnCells = [];
+//    for (var i = 0; i < width - 1; i++) {
+//        autoFitColumnCells[i] = [];
+//    }
+//    for (var y = 0; y < height; y++) {
+//        var count = 0;
+//        var id0 = mergeCellMap[y][0];
+//        for (var x = 1; x < width; x++) {
+//            var id = mergeCellMap[y][x];
+//            if (id0 === id) {
+//                count++;
+//                continue;
+//            }
+//            if (count === 0) {
+//                var cell = cellOrigin.Offset(y, x - 1);
+//                autoFitColumnCells[x - 1].push(cell);
+//            }
+//            count = 0;
+//            id0 = id;
+//        }
+//    }
+//    for (var i = 0; i < autoFitColumnCells.length; i++) {
+//        var cellsList = autoFitColumnCells[i];
+//        var range = cellsList[0];
+//        for (j = 1; j < cellsList.length; j++) {
+//            range = excel.Union(range, cellsList[j]);
+//        }
+//        range.Columns.AutoFit();
+//    }
+//    ;;;
+//}
 
 // excel の Range.Value.toArray() で取得した配列を a[row(y)][column(x)] な配列に変換
 // 処理的にはどうってことないはずなので扱いやすい形に変換してしまう
