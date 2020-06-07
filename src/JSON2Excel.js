@@ -1042,7 +1042,7 @@ function render(sheet, nodeH1, checkSheetData)
             pictureRects.push({ width: commentShape.Width, height: commentShape.Height });
         }
 
-//        betterAutoFit(cellUL, mergeCellMap);
+        //betterAutoFit(cellUL, mergeCellMap);
 
         MergeULCells(cellUL, mergeCellMap);
 
@@ -1107,6 +1107,8 @@ function betterAutoFit(cellOrigin, mergeCellMap) {
     for (var y = 0; y < height; y++) {
         width = Math.max(width, widthMap[y].length);
     }
+    // 番兵の列は除外
+    width--;
 
     //for (var x = 0; x < width; x++) {
     //    var rowList = [];
@@ -1123,6 +1125,9 @@ function betterAutoFit(cellOrigin, mergeCellMap) {
     //    // TODO: 比率が高い幅を優先もしくは重視した方が良い感じになるかも
     //    ;;;
     //}
+
+    // XXX: 折返しが有効だと幅を広げる方向には AutoFit されないようなので十分広げておく
+    cellOrigin.Resize(1, width).EntireColumn.ColumnWidth = 200;
 
     for (var x = 0; x < width; x++) {
         var range = null;
@@ -1143,19 +1148,15 @@ function betterAutoFit(cellOrigin, mergeCellMap) {
                 var h = y - y0;
                 // 連続してるなら一塊にして扱う
                 if (h >= 2) {
-                    try {
-                        subRange.Resize(1, h);
-                    }
-                    catch(e) {
-                        WScript.Echo(h.toString());
-                        throw e;
-                    }
+                    subRange = subRange.Resize(h, 1);
                 }
                 range = (range !== null) ? excel.Union(range, subRange) : subRange;
                 break;
             }
         }
-        range.Columns.AutoFit();
+        if (range !== null) {
+            range.Columns.AutoFit();
+        }
     }
 }
 
