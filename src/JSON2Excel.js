@@ -127,7 +127,8 @@ function parseCheckSheet(sheet) {
     data.table.row = cellUL.Row;
 
     data.table.ul = {
-        column: cellUL.Column
+        column: cellUL.Column,
+        columnWidth: cellUL.ColumnWidth
     };
 
     // 確認欄
@@ -140,6 +141,7 @@ function parseCheckSheet(sheet) {
     };
 
     // 確認欄より右側の保存対象列の情報
+    // TODO: 確認欄のID取得。というより indicesToSave はこの区切りなく管理するべき
     var leftHeaderCell = cellInput.Offset(-1, 1);
     var rightHeaderCell = getLastCellInRow(sheet, leftHeaderCell.Row);
     var headerCells = sheet.Range(leftHeaderCell, rightHeaderCell);
@@ -148,17 +150,30 @@ function parseCheckSheet(sheet) {
         column: headerCells.Column,
         headers: headerCells.Value.toArray(),
         columnWidth: [],
+        columnID: [],
         indicesToSave: []
     };
-    xEach(headerCells, function(cell)
-    {
+    xEach(headerCells, function(cell) {
         data.table.other.columnWidth.push(cell.ColumnWidth);
 
         // 数式の列は対象外
-        if (cell.Offset(1, 0).HasFormula)
-        {
+        if (cell.Offset(1, 0).HasFormula) {
             return;
         }
+
+        var columnIDCell = sheet.Cells(1, cell.Column).Value;
+        if (_.isUndefined(columnIDCell)) {
+            return;
+        }
+
+        //WScript.Echo(cell.Value + ": " + columnIDCell);
+        var columnIDMatch = columnIDCell.match(/^#([A-Za-z_]\w+)$/);
+        if (columnIDMatch == null) {
+            return;
+        }
+
+        var columnID = columnIDMatch[2];
+        data.table.other.columnID.push(columnID);
 
         var index = cell.Column - leftHeaderCell.Column;
         data.table.other.indicesToSave.push(index);
@@ -795,6 +810,10 @@ function render(sheet, nodeH1, checkSheetData)
         //var insertRangeAddress = insertRange.Address(false, false);
         insertRange.Insert(Excel.xlToRight, Excel.xlFormatFromLeftOrAbove);
         //cellUL.Parent.Range(insertRangeAddress).ClearContents();
+
+        // ID 行も同じようにずらしておく
+        insertRange = cellUL.Offset(1 - cellUL.Row, 1).Resize(1, totalItemWidth - 1);
+        insertRange.Insert(Excel.xlToRight);
     }
 
     // 確認欄が設定されている場合
@@ -1042,14 +1061,14 @@ function render(sheet, nodeH1, checkSheetData)
             pictureRects.push({ width: commentShape.Width, height: commentShape.Height });
         }
 
-        //betterAutoFit(cellUL, mergeCellMap);
+        betterAutoFit(cellUL, mergeCellMap);
 
         MergeULCells(cellUL, mergeCellMap);
 
         // autofitはセルをマージした後にやる
-        rangeToAutoFitColumns.Columns.AutoFit();
+        //rangeToAutoFitColumns.Columns.AutoFit();
         // FIXME: H2が存在しない場合にデフォの確認欄がautofitされてるっぽい
-        cellUL.Resize(totalRows, totalItemWidth).Rows.AutoFit();
+        //cellUL.Resize(totalRows, totalItemWidth).Rows.AutoFit();
 
         for (var i = 0; i < sheet.Comments.Count; i++) {
             var commentShape = sheet.Comments(1+i).Shape;
@@ -1074,6 +1093,7 @@ function mergeCellMapToWidthMap(mergeCellMap) {
         var width = mergeCellMap[y].length;
         var id0 = mergeCellMap[y][x0];
         var x0 = 0;
+        var id0 = mergeCellMap[y][x0];
         buf[x0] = 1;
         maxWidth = Math.max(maxWidth, width);
         for (var x = 1; x < width; x++) {
@@ -1093,7 +1113,7 @@ function mergeCellMapToWidthMap(mergeCellMap) {
     }
     // 番兵を追加
     result.push(_.fill(Array(maxWidth), 0));
-
+    
     return result;
 }
 
@@ -1126,9 +1146,10 @@ function betterAutoFit(cellOrigin, mergeCellMap) {
     //    ;;;
     //}
 
-    // XXX: 折返しが有効だと幅を広げる方向には AutoFit されないようなので十分広げておく
-    cellOrigin.Resize(1, width).EntireColumn.ColumnWidth = 200;
+    // 折返しが有効だと幅を広げる方向には AutoFit されないようなので元の大きさに広げておく
+    cellOrigin.Resize(1, width).EntireColumn.ColumnWidth = templateData.checkSheet.table.ul.columnWidth;
 
+    var columnWidth = [];
     for (var x = 0; x < width; x++) {
         var range = null;
         for (var y = 0; y < height; y++) {
@@ -1156,6 +1177,7 @@ function betterAutoFit(cellOrigin, mergeCellMap) {
         }
         if (range !== null) {
             range.Columns.AutoFit();
+            columnWidth.push(range.Columns.ColumnWidth);
         }
     }
 }

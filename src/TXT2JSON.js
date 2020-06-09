@@ -924,6 +924,22 @@ while (!srcLines.atEnd) {
             })();}
         }
 
+        var defaultValues = void 0;
+        while (true) {
+            var defaultValueMatch = text.match(/^\s*\[#([A-Za-z_]\w*)\]\(([^\)]+)\)\s*(.+)$/);
+            if (defaultValueMatch === null) {
+                break;
+            }
+            var name = defaultValueMatch[1];
+            var value = defaultValueMatch[2];
+            text = defaultValueMatch[3];
+
+            if (_.isUndefined(defaultValues)) {
+                defaultValues = {};
+            }
+            defaultValues[name] = value;
+        }
+
         while (/.* {2}$/.test(text)) {
             // 改行の次の行の行頭のスペースは無視するように
             // 厳密にはインデントが揃ってるかちゃんとみるべきだけど、そこまでやるつもりはない
@@ -976,6 +992,7 @@ while (!srcLines.atEnd) {
             text: text,
             tableData: data,
             comment: comment,
+            defaultValues: defaultValues,
             url: url,
             variables: {},
             children: [],
