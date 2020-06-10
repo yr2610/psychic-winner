@@ -134,9 +134,18 @@ function parseCheckSheet(sheet) {
     // 確認欄
     // これは仕様とする
     var cellInput = cellUL.Offset(0, 1);
+    var resultColumnID = (function(s) {
+        var columnIDMatch = s.match(/^#([A-Za-z_]\w+)$/);
+        if (columnIDMatch !== null) {
+            return columnIDMatch[1];
+        }
+        return void 0;
+    })(cellInput.Offset(1 - cellInput.Row).Text);
+
     data.table.input = {
         column: cellInput.Column,
         header: cellInput.Offset(-1, 0).Value,
+        columnID: resultColumnID,
         columnWidth: cellInput.ColumnWidth
     };
 
@@ -150,7 +159,7 @@ function parseCheckSheet(sheet) {
         column: headerCells.Column,
         headers: headerCells.Value.toArray(),
         columnWidth: [],
-        columnID: [],
+        columnID: {},
         indicesToSave: []
     };
     xEach(headerCells, function(cell) {
@@ -161,22 +170,23 @@ function parseCheckSheet(sheet) {
             return;
         }
 
-        var columnIDCell = sheet.Cells(1, cell.Column).Value;
-        if (_.isUndefined(columnIDCell)) {
-            return;
-        }
+        var columnIDCell = cell.Offset(1 - cell.Row).Text;
+        //if (_.isUndefined(columnIDCell)) {
+        //    return;
+        //}
 
-        //WScript.Echo(cell.Value + ": " + columnIDCell);
+        // ID が存在する列だけを対象とする
         var columnIDMatch = columnIDCell.match(/^#([A-Za-z_]\w+)$/);
-        if (columnIDMatch == null) {
+        if (columnIDMatch === null) {
             return;
         }
-
-        var columnID = columnIDMatch[2];
-        data.table.other.columnID.push(columnID);
 
         var index = cell.Column - leftHeaderCell.Column;
         data.table.other.indicesToSave.push(index);
+
+        var columnID = columnIDMatch[1];
+        data.table.other.columnID[columnID] = index;
+
     });
 
     return data;
@@ -769,6 +779,36 @@ nodeUL: {
     return y;
 }
 
+function renderInitialValues_Recurse(node, cellOrigin, y) {
+    // leaf 以外で initialValues が設定されていても無視
+
+    if (node.children.length > 0) {
+        for (var i = 0; i < node.children.length; i++) {
+            y = renderInitialValues_Recurse(node.children[i], cellOrigin, y);
+        }
+        return y;
+    }
+
+    if (!_.isUndefined(node.initialValues)) {
+        var resultData = templateData.checkSheet.table.input;
+        var otherData = templateData.checkSheet.table.other;
+
+        _.forEach(node.initialValues, function(value, key) {
+            if (key == resultData.columnID) {
+                // XXX: result 欄1列の場合しか対応しない
+                cellOrigin.Offset(y).Value = value;
+            }
+            else if (key in otherData.columnID) {
+                // XXX: result 欄1列の場合しか対応しない
+                var x = 1 + otherData.columnID[key];
+                cellOrigin.Offset(y, x).Value = value;
+            }
+        });
+    }
+
+    return y + 1;
+}
+
 
 function render(sheet, nodeH1, checkSheetData)
 {
@@ -856,11 +896,13 @@ function render(sheet, nodeH1, checkSheetData)
         {
             /**/
             // template のウィンドウ枠固定の設定はフラグ代わりになってしまってる感はあるけど、よしとする
+            activeWindow.SplitRow = 0;
+            activeWindow.SplitColumn = 0;
             activeWindow.FreezePanes = false;
-            checkHeaderCell.Offset(1, 0).Select();
+            sheet.Cells(cellUL.Row, cellUL.Column + totalItemWidth).Select();
             // select だけだとダメなケースがある（原因はまったくの不明）ので、別のやり方で
-            activeWindow.SplitColumn = activeWindow.ActiveCell.Column - 1;
-            activeWindow.SplitRow = activeWindow.ActiveCell.Row - 1;
+            //activeWindow.SplitColumn = activeWindow.ActiveCell.Column - 1;
+            //activeWindow.SplitRow = activeWindow.ActiveCell.Row - 1;
             activeWindow.FreezePanes = true;
             /*/
             var splitRow = activeWindow.SplitRow;
@@ -1046,6 +1088,9 @@ function render(sheet, nodeH1, checkSheetData)
         renderUL_Recurse(nodeH1, 0, cellUL, totalItemWidth, groupOffset, imagePath, textArray, mergeCellMap);
 
         cellUL.Resize(totalRows, totalItemWidth).Value = jsArray2dToSafeArray2d(textArray);
+
+        // 初期値が設定されているセルは入力
+        renderInitialValues_Recurse(nodeH1, cellUL.Offset(0, totalItemWidth), 0);
 
         // マージ後だとoffsetがまともに扱えないので、マージ前のrangeを保持
         var rangeToAutoFitColumns = cellUL.Offset(-1, 0).Resize(totalRows + 1, totalItemWidth);

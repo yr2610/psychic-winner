@@ -924,20 +924,21 @@ while (!srcLines.atEnd) {
             })();}
         }
 
-        var defaultValues = void 0;
+        // TODO: leaf 以外で initialValues が設定されていたらエラー出す
+        var initialValues = void 0;
         while (true) {
-            var defaultValueMatch = text.match(/^\s*\[#([A-Za-z_]\w*)\]\(([^\)]+)\)\s*(.+)$/);
-            if (defaultValueMatch === null) {
+            var initialValueMatch = text.match(/^\s*\[#([A-Za-z_]\w*)\]\(([^\)]+)\)\s*(.+)$/);
+            if (initialValueMatch === null) {
                 break;
             }
-            var name = defaultValueMatch[1];
-            var value = defaultValueMatch[2];
-            text = defaultValueMatch[3];
+            var name = initialValueMatch[1];
+            var value = initialValueMatch[2];
+            text = initialValueMatch[3];
 
-            if (_.isUndefined(defaultValues)) {
-                defaultValues = {};
+            if (_.isUndefined(initialValues)) {
+                initialValues = {};
             }
-            defaultValues[name] = value;
+            initialValues[name] = value;
         }
 
         while (/.* {2}$/.test(text)) {
@@ -992,7 +993,7 @@ while (!srcLines.atEnd) {
             text: text,
             tableData: data,
             comment: comment,
-            defaultValues: defaultValues,
+            initialValues: initialValues,
             url: url,
             variables: {},
             children: [],
