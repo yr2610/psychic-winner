@@ -904,7 +904,7 @@ while (!srcLines.atEnd) {
             stack.pop();
         }
 
-        var uidMatch = text.match(/^\[#([\w\-]+)\]\s*(.+)$/);
+        var uidMatch = text.match(/^\[#([\w\-]+)\]\s+(.+)$/);
         var uid = undefined;
         if (uidMatch) {
             uid = uidMatch[1];
@@ -1009,7 +1009,7 @@ while (!srcLines.atEnd) {
         if (!uidMatch || fResetId) {
             // tree構築後にleafだったらIDをふる
             var newSrcText = lineObj.line;
-            var match = newSrcText.match(/^(\s*[\*\+\-])(?: \[#[\w\-]+\])?(.*)$/);
+            var match = newSrcText.match(/^(\s*[\*\+\-])(?: \[#[\w\-]+\]\s+)?(.*)$/);
 
             // ID 挿入して書き換え
             newSrcText = match[1] + " [#{uid}]" + match[2];
