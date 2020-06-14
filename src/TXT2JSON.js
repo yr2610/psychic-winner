@@ -1737,7 +1737,9 @@ root.children.forEach(function(element, index, array) {
             node.id = uid;
 
             // ID 挿入して書き換え
-            var newSrcText = info.newSrcText.format({uid: uid});
+            // "{{foo}}" みたいな文法を作ろうとしたら {} に置換されてしまうので、汎用 format ではなく "{uid}" 専用の replace 処理に
+            //var newSrcText = info.newSrcText.format({uid: uid});
+            var newSrcText = info.newSrcText.replace(/\{uid\}/, uid);
 
             AddSrcTextToRewrite(filePath, info.lineNum, newSrcText);
         }
@@ -1924,6 +1926,11 @@ CL.deletePropertyForAllNodes(root, "marker");
         }
     }
 
+    function evalParameters(params) {
+        // object を返すには丸括弧が必要らしい
+        return eval("({" + params + "})");
+    }
+
     // subTree に対してそのまま cloneDeep を呼ぶと、 parent をさかのぼって tree 全体が clone されるので対処
     function cloneSubTree(srcSubTree) {
 //        var rootParent = srcSubTree.parent;
@@ -1988,7 +1995,7 @@ CL.deletePropertyForAllNodes(root, "marker");
             return;
         }
 
-        var match = node.text.trim().match(/^&([A-Za-z_]\w*)\(.*\)$/);
+        var match = node.text.trim().match(/^&([A-Za-z_]\w*)\((.*)\)$/);
         if (match === null) {
             return;
         }
@@ -2021,6 +2028,15 @@ CL.deletePropertyForAllNodes(root, "marker");
 
         // 親の children の自分自身を null に
         parent.children[index] = null;
+
+        try {
+            node.defaultParameters = evalParameters(match[2]);
+        }
+        catch(e) {
+            var errorMessage = "パラメータが不正です。";
+            aliasError(errorMessage, node);
+        }
+        //WScript.Echo(JSON.stringify(node.defaultParameters, undefined, 4));
 
         return true;
     });
@@ -2094,12 +2110,21 @@ CL.deletePropertyForAllNodes(root, "marker");
                 if (node === null) {
                     return true;
                 }
-                var match = node.text.trim().match(/^\*([A-Za-z_]\w*)\(.*\)$/);
+                var match = node.text.trim().match(/^\*([A-Za-z_]\w*)\((.*)\)$/);
                 if (match === null) {
                     return;
                 }
                 var subTreeName = match[1];
-                addSubTree(node, index, subTreeName);
+
+                try {
+                    var parameters = evalParameters(match[2]);
+                }
+                catch(e) {
+                    var errorMessage = "パラメータが不正です。";
+                    aliasError(errorMessage, node);
+                }
+        
+                addSubTree(node, index, subTreeName, parameters);
             });
 
             shrinkChildrenArray(subTreeRoot, null, -1);
@@ -2212,7 +2237,7 @@ CL.deletePropertyForAllNodes(root, "marker");
     
     // node に sub tree の clone を追加する
     // 展開前の状態で追加
-    function addSubTree(targetNode, targetIndex, subTreeName) {
+    function addSubTree(targetNode, targetIndex, subTreeName, parameters) {
         var subTree = findSubTree_Recurse(subTreeName, targetNode.parent);
 
         // みつからなかった
@@ -2223,6 +2248,25 @@ CL.deletePropertyForAllNodes(root, "marker");
 
         // まず clone
         subTree = cloneSubTree(subTree);
+
+        _.forEach(subTree.defaultParameters, function(value, key) {
+            if (_.isUndefined(parameters[key])) {
+                parameters[key] = value;
+            }
+        });
+
+        // 変数展開
+        if (!_.isEmpty(parameters)) {
+//            WScript.Echo(JSON.stringify(parameters, undefined, 4));
+            forAllNodes_Recurse(subTree, null, -1, function(node, parent, index) {
+                function replacer(m, k) { return parameters[k]; }
+                node.text = node.text.replace( /\{\{([A-Za-z_]\w*)\}\}/g, replacer);
+                if (node.comment) {
+                    node.comment = node.comment.replace( /\{\{([A-Za-z_]\w*)\}\}/g, replacer);
+                }
+            });
+        }
+
         // XXX: node に循環参照があるので JSON.stringify は使えない
         //subTree = JSON.parse(JSON.stringify(subTree));
 
@@ -2241,10 +2285,19 @@ CL.deletePropertyForAllNodes(root, "marker");
                 if (parent === null) {
                     return;
                 }
-                var match = node.text.trim().match(/^\*([A-Za-z_]\w*)\(.*\)$/);
+                var match = node.text.trim().match(/^\*([A-Za-z_]\w*)\((.*)\)$/);
                 if (match !== null) {
                     var subTreeName = match[1];
-                    addSubTree(node, index, subTreeName);
+
+                    try {
+                        var parameters = evalParameters(match[2]);
+                    }
+                    catch(e) {
+                        var errorMessage = "パラメータが不正です。";
+                        aliasError(errorMessage, node);
+                    }
+        
+                    addSubTree(node, index, subTreeName, parameters);
                 }
             });
 
@@ -2309,12 +2362,20 @@ CL.deletePropertyForAllNodes(root, "marker");
         if (node === null) {
             return true;
         }
-        var match = node.text.trim().match(/^\*([A-Za-z_]\w*)\(.*\)$/);
+        var match = node.text.trim().match(/^\*([A-Za-z_]\w*)\((.*)\)$/);
         if (match !== null) {
             var subTreeName = match[1];
 
             try {
-                addSubTree(node, index, subTreeName);
+                var parameters = evalParameters(match[2]);
+            }
+            catch(e) {
+                var errorMessage = "パラメータが不正です。";
+                aliasError(errorMessage, node);
+            }
+
+            try {
+                addSubTree(node, index, subTreeName, parameters);
             }
             catch (e) {
                 if (_.isUndefined(e.node) || _.isUndefined(e.errorMessage)){
