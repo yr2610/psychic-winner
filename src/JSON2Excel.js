@@ -211,6 +211,12 @@ var shellApplication = new ActiveXObject("Shell.Application");
 var fso = new ActiveXObject( "Scripting.FileSystemObject" );
 var stream = new ActiveXObject("ADODB.Stream");
 
+// Performance を取得
+var htmlfile = WSH.CreateObject("htmlfile");
+htmlfile.write('<meta http-equiv="x-ua-compatible" content="IE=Edge"/>');
+var performance = htmlfile.parentWindow.performance;
+htmlfile.close();
+
 if (( WScript.Arguments.length != 1 ) ||
     ( WScript.Arguments.Unnamed(0) == ""))
 {
@@ -574,8 +580,12 @@ function addJSONSheet(object, sheetName) {
 
     /**/
     var sJSONArray = sJSON.split("\n");
-    var excelArray = jsArray1DToExcelRangeArray(sJSONArray, sJSONArray.length);
+    var startTime = performance.now();
+    //var excelArray = jsArray1DToExcelRangeArray(sJSONArray, sJSONArray.length);
+    var excelArray = jsArray1dColumnMajorToSafeArray2d(sJSONArray, sJSONArray.length);
     jsonSheet.Cells(1, 1).Resize(sJSONArray.length, 1) = excelArray;
+    var endTime = performance.now();
+    //WScript.Echo(endTime - startTime);
     /*/
     // 1行1セルで出力するとクソ重いので、一つのセルに、セルの文字数上限32767ギリギリまで詰め込む
     var row;
@@ -1089,8 +1099,15 @@ function render(sheet, nodeH1, checkSheetData)
 
         renderUL_Recurse(nodeH1, 0, cellUL, totalItemWidth, groupOffset, imagePath, textArray, mergeCellMap);
 
+        var startTime = performance.now();
+        //var maxColumns = 0;
+        //textArray.forEach(function(e) { maxColumns = Math.max(maxColumns, e.length); });
         cellUL.Resize(totalRows, totalItemWidth).Value = jsArray2dToSafeArray2d(textArray);
-
+        //WScript.Echo(JSON.stringify(textArray[0], undefined, 4));
+        //cellUL.Resize(totalRows, totalItemWidth).Value = jsArray2dToSafeArray2d(textArray, totalItemWidth);
+        var endTime = performance.now();
+        //WScript.Echo(endTime - startTime);
+    
         // 初期値が設定されているセルは入力
         renderInitialValues_Recurse(nodeH1, cellUL.Offset(0, totalItemWidth), 0);
 
