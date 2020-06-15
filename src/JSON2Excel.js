@@ -303,16 +303,18 @@ var templatesDirectory = fso.GetParentFolderName(filePath);
 /*/
 // デフォルトではツール置き場の templates/default.xlsx という名前のExcelをテンプレートとして使うようにしておく
 var defaultTemplateName = "default.xlsx";
+var templateName = root.variables.templateFilename ? root.variables.templateFilename : defaultTemplateName;
 var currentDirectory = fso.GetParentFolderName(WScript.ScriptFullName);
 var templatesDirectory = fso.BuildPath(currentDirectory, "templates");
 var localTemplatesDirectory = fso.BuildPath(fso.GetParentFolderName(filePath), "templates");
+var templatePath = fso.BuildPath(templatesDirectory, templateName);
 if (fso.FolderExists(localTemplatesDirectory)) {
-    templatesDirectory = localTemplatesDirectory;
+    var localTemplatePath = fso.BuildPath(localTemplatesDirectory, templateName);
+    if (fso.FileExists(localTemplatePath)) {
+        templatePath = localTemplatePath;
+    }
 }
 /**/
-var templateName = root.variables.templateFilename ? root.variables.templateFilename : defaultTemplateName;
-
-var templatePath = fso.BuildPath(templatesDirectory, templateName);
 
 // 出力（SaveAs）ファイル名を先に確認
 var dstFilename = root.variables.outputFilename ? root.variables.outputFilename : fso.GetBaseName(filePath);
