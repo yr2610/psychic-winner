@@ -913,8 +913,10 @@ function render(sheet, nodeH1, checkSheetData)
             activeWindow.FreezePanes = false;
             sheet.Cells(cellUL.Row, cellUL.Column + totalItemWidth).Select();
             // select だけだとダメなケースがある（原因はまったくの不明）ので、別のやり方で
-            //activeWindow.SplitColumn = activeWindow.ActiveCell.Column - 1;
-            //activeWindow.SplitRow = activeWindow.ActiveCell.Row - 1;
+            // 非表示の行・列があると SplitColumn, SplitRow はずれるらしい（多分VBAのバグ）
+            // XXX: 100% template 依存の処理。時間もないので一旦はこれで
+            activeWindow.SplitColumn = activeWindow.ActiveCell.Column - 1 - 1;
+            activeWindow.SplitRow = activeWindow.ActiveCell.Row - 1 - 1;
             activeWindow.FreezePanes = true;
             /*/
             var splitRow = activeWindow.SplitRow;
@@ -1100,11 +1102,21 @@ function render(sheet, nodeH1, checkSheetData)
         renderUL_Recurse(nodeH1, 0, cellUL, totalItemWidth, groupOffset, imagePath, textArray, mergeCellMap);
 
         var startTime = performance.now();
+        function _jsArray2dToSafeArray2d(a) {
+            // XXX: 理由は忘れたけど、新しい配列に入れなおすだけで正常動作するっぽい
+            var r = [];
+            a.forEach(function(v) {
+                var row = [];
+                Array.prototype.push.apply(row, v);
+                r.push(row);
+            });
+            return jsArray2dToSafeArray2d(r, a[0].length);
+        }
         //var maxColumns = 0;
         //textArray.forEach(function(e) { maxColumns = Math.max(maxColumns, e.length); });
-        cellUL.Resize(totalRows, totalItemWidth).Value = jsArray2dToSafeArray2d(textArray);
+        cellUL.Resize(totalRows, totalItemWidth).Value = jsArray2dToSafeArray2d_old(textArray);
         //WScript.Echo(JSON.stringify(textArray[0], undefined, 4));
-        //cellUL.Resize(totalRows, totalItemWidth).Value = jsArray2dToSafeArray2d(textArray, totalItemWidth);
+        //cellUL.Resize(totalRows, totalItemWidth).Value = _jsArray2dToSafeArray2d(textArray);
         var endTime = performance.now();
         //WScript.Echo(endTime - startTime);
     
