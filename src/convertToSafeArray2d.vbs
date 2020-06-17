@@ -1,14 +1,16 @@
 ﻿Function jsArray2dToSafeArray2d_old(jsArray)
     Dim l1, l2, result
     Dim i, j
-    l1 = jsArray.length
-    l2 = Eval("jsArray.[0].length")
-    ReDim result(l1 - 1, l2 - 1)
+    l1 = jsArray.length - 1
+    l2 = jsArray.[0].length - 1
+    ReDim result(l1, l2)
 
-    For i = 0 to l1 - 1
-        For j = 0 to l2 - 1
+    Dim a
+    For i = 0 to l1
+        Set a = Eval("jsArray.[" & i & "]")
+        For j = 0 to l2
             On Error Resume Next
-            result(i, j) = Eval("jsArray.[" & i & "].[" & j & "]")
+            result(i, j) = Eval("a.[" & j & "]")
             On Error Goto 0
         Next
     Next
@@ -16,13 +18,12 @@
     jsArray2dToSafeArray2d_old = result
 End Function
 
-Function jsArray2dToSafeArray2d(jsArray, columns)
+Function jsArray2dToSafeArray2d(jsArray)
     Dim l1, l2, result
     Dim i, j
-    l1 = jsArray.length
-    'l2 = jsArray.[0].length
-    l2 = columns
-    ReDim result(l1 - 1, l2 - 1)
+    l1 = jsArray.length - 1
+    l2 = jsArray.[0].length - 1
+    ReDim result(l1, l2 )
 
     Dim row, column, v
     i = 0
@@ -30,29 +31,22 @@ Function jsArray2dToSafeArray2d(jsArray, columns)
         j = 0
         For Each v In row
             result(i, j) = v
-            If j >= l2 - 1 Then
+            If j >= l2 Then
                 Exit For
             End If
             j = j + 1
         Next
+        ' TODO: 配列を宣言してから触れてない要素を cell.value に入れるとどうなるのか確認しておきたい
 '        If j < l2 - 1 Then
 '            For j = j To l2 - 1
 '                result(i, j) = ""
 '            Next
 '        End If
-        If i >= l1 - 1 Then
+        If i >= l1 Then
             Exit For
         End If
         i = i + 1
     Next
-    
-    'For i = 0 to l1 - 1
-    '    For j = 0 to l2 - 1
-    '        On Error Resume Next
-    '        result(i, j) = Eval("jsArray.[" & i & "].[" & j & "]")
-    '        On Error Goto 0
-    '    Next
-    'Next
 
     jsArray2dToSafeArray2d = result
 End Function

@@ -585,7 +585,7 @@ function addJSONSheet(object, sheetName) {
     var excelArray = jsArray1dColumnMajorToSafeArray2d(sJSONArray, sJSONArray.length);
     jsonSheet.Cells(1, 1).Resize(sJSONArray.length, 1) = excelArray;
     var endTime = performance.now();
-    //WScript.Echo(endTime - startTime);
+    //WScript.Echo("1d:\n" + (endTime - startTime));
     /*/
     // 1行1セルで出力するとクソ重いので、一つのセルに、セルの文字数上限32767ギリギリまで詰め込む
     var row;
@@ -1066,10 +1066,12 @@ function render(sheet, nodeH1, checkSheetData)
 
     function new2dArray(n1, n2)
     {
-        var array = new Array(n1);
+        var array = [];
         for (var i = 0; i < n1; i++)
         {
-            array[i] = new Array(n2);
+            // new Array() で作って一度も代入してないと safe array 変換でバグる
+            // Array.prototype.push.apply() で新しい配列に入れなおすだけで正常動作するっぽいけど、最初から null 埋めしておく
+            array.push(_.fill(Array(n2), null));
         }
         return array;
     }
@@ -1094,31 +1096,27 @@ function render(sheet, nodeH1, checkSheetData)
         var textArray = new2dArray(totalRows, totalItemWidth);
         var mergeCellMap = new2dArray(totalRows, totalItemWidth + 1);   // 番兵用に1列多めに確保
         var imagePath = "images";
-        
+
         if (nodeH1.variables.imagePath) {
             imagePath += "/" + nodeH1.variables.imagePath;
         }
 
         renderUL_Recurse(nodeH1, 0, cellUL, totalItemWidth, groupOffset, imagePath, textArray, mergeCellMap);
 
+        //var startTime = performance.now();
+        //var result = [];
+        //for (var t = 0; t < 1000; t++) {
+        //    result.push(jsArray2dToSafeArray2d(textArray));
+        //}
+        //var endTime = performance.now();
+        //WScript.Echo("2d:\n" + (endTime - startTime));
+
         var startTime = performance.now();
-        function _jsArray2dToSafeArray2d(a) {
-            // XXX: 理由は忘れたけど、新しい配列に入れなおすだけで正常動作するっぽい
-            var r = [];
-            a.forEach(function(v) {
-                var row = [];
-                Array.prototype.push.apply(row, v);
-                r.push(row);
-            });
-            return jsArray2dToSafeArray2d(r, a[0].length);
-        }
         //var maxColumns = 0;
         //textArray.forEach(function(e) { maxColumns = Math.max(maxColumns, e.length); });
-        cellUL.Resize(totalRows, totalItemWidth).Value = jsArray2dToSafeArray2d_old(textArray);
-        //WScript.Echo(JSON.stringify(textArray[0], undefined, 4));
-        //cellUL.Resize(totalRows, totalItemWidth).Value = _jsArray2dToSafeArray2d(textArray);
+        cellUL.Resize(totalRows, totalItemWidth).Value = jsArray2dToSafeArray2d(textArray);
         var endTime = performance.now();
-        //WScript.Echo(endTime - startTime);
+        //WScript.Echo("2d:\n" + (endTime - startTime));
     
         // 初期値が設定されているセルは入力
         renderInitialValues_Recurse(nodeH1, cellUL.Offset(0, totalItemWidth), 0);
