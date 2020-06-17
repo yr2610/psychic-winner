@@ -1142,7 +1142,7 @@ function render(sheet, nodeH1, checkSheetData)
         // autofitはセルをマージした後にやる
         //rangeToAutoFitColumns.Columns.AutoFit();
         // FIXME: H2が存在しない場合にデフォの確認欄がautofitされてるっぽい
-        //cellUL.Resize(totalRows, totalItemWidth).Rows.AutoFit();
+        cellUL.Resize(totalRows, totalItemWidth).Rows.AutoFit();
 
         for (var i = 0; i < sheet.Comments.Count; i++) {
             var commentShape = sheet.Comments(1+i).Shape;
@@ -1192,7 +1192,7 @@ function mergeCellMapToWidthMap(mergeCellMap) {
 }
 
 function betterAutoFit(cellOrigin, mergeCellMap) {
-    widthMap = mergeCellMapToWidthMap(mergeCellMap);
+    var widthMap = mergeCellMapToWidthMap(mergeCellMap);
     var height = widthMap.length;
     if (height === 0) {
         return;
