@@ -1135,14 +1135,17 @@ function render(sheet, nodeH1, checkSheetData)
             pictureRects.push({ width: commentShape.Width, height: commentShape.Height });
         }
 
-        betterAutoFit(cellUL, mergeCellMap);
+        var rowHeight = betterAutoFit(cellUL, mergeCellMap);
 
         MergeULCells(cellUL, mergeCellMap);
+
+        // セルのマージで高さが勝手に変わるので、再度セット
+        setRowHeight(cellUL, rowHeight);
 
         // autofitはセルをマージした後にやる
         //rangeToAutoFitColumns.Columns.AutoFit();
         // FIXME: H2が存在しない場合にデフォの確認欄がautofitされてるっぽい
-        cellUL.Resize(totalRows, totalItemWidth).Rows.AutoFit();
+        //cellUL.Resize(totalRows, totalItemWidth).Rows.AutoFit();
 
         for (var i = 0; i < sheet.Comments.Count; i++) {
             var commentShape = sheet.Comments(1+i).Shape;
@@ -1152,6 +1155,32 @@ function render(sheet, nodeH1, checkSheetData)
         }
 
     })();}
+}
+
+function setRowHeight(cellOrigin, rowHeight) {
+    // 同じ高さの行をまとめてセット
+    var group = {};
+    for (var i = 0; i < rowHeight.length; i++) {
+        var value = rowHeight[i];
+        var key = String(value);
+        if (!(key in group)) {
+            group[key] = {
+                rowHeight: value,
+                indices: []
+            };
+        }
+        group[key].indices.push(i);
+    }
+
+    _.forEach(group, function(value, key) {
+        var range = cellOrigin.Offset(value.indices[0]);
+        value.indices.slice(1).forEach(function(index) {
+            range = excel.Union(range, cellOrigin.Offset(index));
+        });
+
+        range.EntireRow.RowHeight = value.rowHeight;
+    });
+
 }
 
 // 扱いやすい形に変換
@@ -1199,10 +1228,12 @@ function betterAutoFit(cellOrigin, mergeCellMap) {
     }
     var width = 0;
     for (var y = 0; y < height; y++) {
+        // 番兵削除
+        widthMap[y] = widthMap[y].slice(0, -1);
         width = Math.max(width, widthMap[y].length);
     }
     // 番兵の列は除外
-    width--;
+    //width--;
 
     //for (var x = 0; x < width; x++) {
     //    var rowList = [];
@@ -1254,6 +1285,80 @@ function betterAutoFit(cellOrigin, mergeCellMap) {
             columnWidth.push(range.Columns.ColumnWidth);
         }
     }
+
+    // 行の高さの autofit
+
+    // 幅の並びを文字列で持っておく
+    var widthKeys = [];
+    widthMap.forEach(function(element) {
+        var s = "";
+        element.forEach(function(w) {
+            s += ":" + w.toString(16);
+        });
+        widthKeys.push(s);
+    });
+
+    // まずは全体を autofit
+    cellOrigin.Resize(height, width).Rows.AutoFit();
+
+    // 1個も結合されてない行の key
+    var noMergeKey = _.repeat(':1', width);
+
+    // autofit 済か
+    // 1個も結合されてない行は適用済み扱い
+    var applied = _.map(widthKeys, function(key) {
+        return key == noMergeKey;
+    });
+
+    for (var y = 0; y < height; y++) {
+        if (applied[y]) {
+            continue;
+        }
+        var wMap = widthMap[y];
+        var rangeRow = null;
+        for (var i = 0; i < width; i++) {
+            // 横方向の結合セル個数
+            var numCells = wMap[i];
+            if (numCells == 0) {
+                continue;
+            }
+            var mergedColumnWidth = _.sum(columnWidth.slice(i, i + numCells));
+            cellOrigin.Offset(0, i).EntireColumn.ColumnWidth = mergedColumnWidth;
+    
+            //var subRange = cellOrigin.Offset(y, i).Resize(1, numCells);
+            //rangeRow = (rangeRow !== null) ? excel.Union(rangeRow, subRange) : subRange;
+        }
+        rangeRow = cellOrigin.Offset(y, 0).Resize(1, width);
+
+        applied[y] = true;
+
+        // 結合セルが同じ並びの行をまとめて autofit
+        var key = widthKeys[y];
+        var range = rangeRow;
+        // TODO: union を1行1行ではなく、連続した行をまとめてできないか
+        for (var i = y + 1; i < height; i++) {
+            if (key == widthKeys[i]) {
+                //range = excel.Union(range, rangeRow.Offset(i - y, 0));
+                range = excel.Union(range, cellOrigin.Offset(i, 0).Resize(1, width));
+                applied[i] = true;
+            }
+        }
+        range.Rows.AutoFit();
+    }
+
+    // 元に戻す
+    for (var i = 0; i < columnWidth.length; i++) {
+        cellOrigin.Offset(0, i).EntireColumn.ColumnWidth = columnWidth[i];
+    }
+
+    // merge で高さが変わるようなので、再度セット用にautofit直後の高さを返しておく
+    var rowHeight = [];
+    var cell = cellOrigin;
+    for (var y = 0; y < height; y++, cell = cell.Offset(1, 0)) {
+        rowHeight.push(cell.EntireRow.RowHeight);
+    }
+
+    return rowHeight;
 }
 
 //function betterAutoFit(cellOrigin, mergeCellMap) {
