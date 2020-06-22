@@ -980,6 +980,7 @@ function render(sheet, nodeH1, checkSheetData)
     }
 
     // headerが設定してある場合は適用
+    var headerColumnWidth = [];
     if (nodeH1.tableHeadersNonInputArea.length > 0)
     {
         (function(){
@@ -1043,6 +1044,13 @@ function render(sheet, nodeH1, checkSheetData)
                 {
                     var rangeToMerge = cell.Resize(1, size);
                     rangesToMerge.push(rangeToMerge);
+                }
+                // 結合ナシの場合は autofit 対象に含める
+                else if (size == 1) {
+                    cell.Columns.AutoFit();
+                    headerColumnWidth[offset] = {
+                        value: cell.Columns.ColumnWidth
+                    };
                 }
             }
             
@@ -1135,7 +1143,7 @@ function render(sheet, nodeH1, checkSheetData)
             pictureRects.push({ width: commentShape.Width, height: commentShape.Height });
         }
 
-        var rowHeight = betterAutoFit(cellUL, mergeCellMap);
+        var rowHeight = betterAutoFit(cellUL, mergeCellMap, headerColumnWidth);
 
         MergeULCells(cellUL, mergeCellMap);
 
@@ -1220,7 +1228,7 @@ function mergeCellMapToWidthMap(mergeCellMap) {
     return result;
 }
 
-function betterAutoFit(cellOrigin, mergeCellMap) {
+function betterAutoFit(cellOrigin, mergeCellMap, headerColumnWidth) {
     var widthMap = mergeCellMapToWidthMap(mergeCellMap);
     var height = widthMap.length;
     if (height === 0) {
@@ -1282,7 +1290,12 @@ function betterAutoFit(cellOrigin, mergeCellMap) {
         }
         if (range !== null) {
             range.Columns.AutoFit();
-            columnWidth.push(range.Columns.ColumnWidth);
+            var cw = range.Columns.ColumnWidth;
+            var headerCW = headerColumnWidth[x];
+            if (!_.isUndefined(headerCW)) {
+                cw = Math.max(cw, headerCW.value);
+            }
+            columnWidth.push(cw);
         }
     }
 

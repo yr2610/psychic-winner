@@ -88,6 +88,14 @@ if (( WScript.Arguments.length != 1 ) ||
 
 var filePath = WScript.Arguments.Unnamed(0);
 
+// 一応 xls* で受け取るようにしておく
+(function() {
+    var fso = new ActiveXObject("Scripting.FileSystemObject");
+    if (fso.GetExtensionName(filePath).substring(0, 3) != "xls") {
+        Error("Excel ファイルをドラッグ＆ドロップしてください。");
+    }
+})();
+
 // フラグだけ立てといて、更新不要かどうかの判定後にエラーを出す
 // 更新不要とか、その他エラーがあった場合にexcel閉じなくて良いように
 var isExcelFileOpened = CL.isFileOpened(filePath);
