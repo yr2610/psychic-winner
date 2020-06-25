@@ -225,6 +225,17 @@ if (( WScript.Arguments.length != 1 ) ||
 
 var filePath = WScript.Arguments.Unnamed(0);
 
+//var startTime = performance.now();
+//var h = [];
+//for (var i = 0; i < 10; i++) {
+//    var obj = shell.Exec('certUtil -hashfile ' + filePath + ' SHA256');
+//    obj.StdOut.SkipLine()
+//    var hash = obj.StdOut.ReadLine();
+//    h.push(hash);
+//}
+//var endTime = performance.now();
+//WScript.Echo((endTime - startTime));
+
 if (fso.GetExtensionName(filePath) != "json")
 {
     Error(".json ファイルをドロップしてください。");
