@@ -482,82 +482,90 @@ excel.StatusBar = "シート作成中: " + indexSheet.Name;
     var regExp = new RegExp(templateName, "g");
     var replaceRange = tableRow;
     var columnsToAutofit = {};
-    for (var i = 0; i < root.children.length; i++)
-    {
+
+    var numH1s = root.children.length;
+    var afterName = [];
+    for (var i = 0; i < numH1s; i++) {
         var nodeH1 = root.children[i];
-        var name = nodeH1.text;
-        //var sheet = book.Worksheets(name);
-
-        var afterName = name;
+        // unquoted
+        var uq = nodeH1.text;
         // single quoted
-        var afterNameSQ = "'" + afterName + "'";
-
-        xEach(replaceRange, function(cell)
-        {
-            //WScript.Echo(afterNameSQ + ":" + cell.Address(false, false) + ":" + cell.Formula);
-            if (cell.HasFormula)
-            {
-                var formula0 = cell.Formula;
-                if (regExp.test(formula0))
-                {
-                    cell.Formula = formula0.replace(regExp, afterNameSQ);
-                }
-            }
-            else
-            {
-                var value0 = cell.Value;
-                if (value0)
-                {
-                    if (regExp.test(value0))
-                    {
-                        cell.Value = value0.replace(regExp, afterName);
-
-                        // この列を記録しておいて、header含めて最後の行までautofit
-                        columnsToAutofit[cell.Column] = cell.Row;
-                    }
-                }
-
-            }
-
-            if (cell.Value === afterName) {
-                var targetSheet = findSheetByName(book, afterName);
-                // XXX: [H1] のアドレスを保存しておいて、そこを見るように
-                var cellH1 = targetSheet.Cells.Find(afterName, sheet.Cells(1, 1), Excel.xlValues, Excel.xlWhole, Excel.xlByRows, Excel.xlNext, true);
-                // XXX: とりあえず size, bold だけ…
-                var fontH1Size = cellH1.Font.Size;
-                var fontH1Bold = cellH1.Font.Bold;
-                var targetSubAddress = indexSheet.Name + "!" + cell.Address(true, true);
-                cellH1.Hyperlinks.Add(cellH1, "", targetSubAddress, "", cellH1.Value);
-                cellH1.Font.Size = fontH1Size;
-                cellH1.Font.Bold = fontH1Bold;
-            }
-
-            // リンク先の置換
-            if (cell.Hyperlinks.Count > 0)
-            {
-                var subAddress0 = cell.Hyperlinks(1).SubAddress;
-                if (subAddress0)
-                {
-                    var subAddress1 = subAddress0.replace(regExp, afterNameSQ);
-
-                    if (true)
-                    {
-                        //cell.Hyperlinks.Delete(); // これがなくても問題なさげ（特にごみデータが残ったりとかもないっぽい）
-                        indexSheet.Hyperlinks.Add(cell, "", subAddress1, "", cell.Value);
-                    }
-                    else
-                    {
-                        // TODO: これだとなぜかすべてのHyperlinkが一斉に書き変わる
-                        cell.Hyperlinks(1).SubAddress = subAddress1;
-                    }
-                }
-            }
-
+        var sq = "'" + uq + "'";
+        afterName.push({
+            uq: uq,
+            sq: sq
         });
-
-        replaceRange = replaceRange.Offset(1, 0);
-
     }
+    xEach(replaceRange, function(cell) {
+        if (false && cell.HasFormula) {
+            var formula0 = cell.Formula;
+            regExp.lastIndex = 0;
+            if (regExp.test(formula0)) {
+                var formulas = [];
+                for (var i = 0; i < numH1s; i++) {
+                    var formula1 = formula0.replace(regExp, afterName[i].sq);
+                    formulas.push(formula1);
+                }
+                WScript.Echo(JSON.stringify(formulas, undefined, 4));
+                var excelArray = jsArray1dColumnMajorToSafeArray2d(formulas, formulas.length);
+                var range = cell.Resize(formulas.length, 1);
+                //range.ClearContents();
+                range.Formula = excelArray;
+            }
+        }
+        else {
+            var value0 = cell.Value;
+            if (value0) {
+                regExp.lastIndex = 0;
+                if (regExp.test(value0)) {
+                    var values = [];
+                    for (var i = 0; i < numH1s; i++) {
+                        var value1 = value0.replace(regExp, afterName[i].uq);
+                        values.push(value1);
+                    }
+                    var excelArray = jsArray1dColumnMajorToSafeArray2d(values, values.length);
+                    var range = cell.Resize(values.length, 1);
+                    range.Value = excelArray;
+
+                    // この列を記録しておいて、header含めて最後の行までautofit
+                    columnsToAutofit[cell.Column] = cell.Row + numH1s - 1;
+
+                    if (value0 === templateName) {
+                        for (var i = 0; i < numH1s; i++) {
+                            var sheetNameCell = cell.Offset(i, 0);
+                            var targetSheet = findSheetByName(book, afterName[i].uq);
+                            // XXX: [H1] のアドレスを保存しておいて、そこを見るように
+                            var cellH1 = targetSheet.Cells.Find(afterName[i].uq, sheet.Cells(1, 1), Excel.xlValues, Excel.xlWhole, Excel.xlByRows, Excel.xlNext, true);
+                            // XXX: とりあえず size, bold だけ…
+                            var fontH1Size = cellH1.Font.Size;
+                            var fontH1Bold = cellH1.Font.Bold;
+                            var targetSubAddress = indexSheet.Name + "!" + sheetNameCell.Address(true, true);
+                            cellH1.Hyperlinks.Add(cellH1, "", targetSubAddress, "", cellH1.Value);
+                            cellH1.Font.Size = fontH1Size;
+                            cellH1.Font.Bold = fontH1Bold;
+
+                            // リンク先の置換
+                            if (sheetNameCell.Hyperlinks.Count > 0) {
+                                var subAddress0 = sheetNameCell.Hyperlinks(1).SubAddress;
+                                if (subAddress0) {
+                                    var subAddress1 = subAddress0.replace(regExp, afterName[i].sq);
+
+                                    if (true) {
+                                        //cell.Hyperlinks.Delete(); // これがなくても問題なさげ（特にごみデータが残ったりとかもないっぽい）
+                                        indexSheet.Hyperlinks.Add(sheetNameCell, "", subAddress1, "", sheetNameCell.Value);
+                                    }
+                                    else {
+                                        // TODO: これだとなぜかすべてのHyperlinkが一斉に書き変わる
+                                        sheetNameCell.Hyperlinks(1).SubAddress = subAddress1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    });
 
     // autofit
     (function(){
@@ -625,9 +633,10 @@ addJSONSheet(templateData, "template.json");
 
 indexSheet.Select();
 
-excel.DisplayAlerts = false;
-templateSheet.Delete();
-excel.DisplayAlerts = true;
+//excel.DisplayAlerts = false;
+//templateSheet.Delete();
+//excel.DisplayAlerts = true;
+templateSheet.Visible = false;
 
 
 function getRelativePath(filePath, rootFilePath, fso) {
@@ -673,8 +682,12 @@ function addPictureAsComment(cell, path)
     shape.Delete();
 }
 
+function toHexWord(v) {
+    return ('0000' + v.toString(16).toUpperCase()).substr(-4);
+}
+
 // textArray は [row(y)][column(x)] な 2d array を渡す
-function renderUL_Recurse(node, y, cellOrigin, widthUL, groupOffset, imagePath, textArray, mergeCellMap)
+function renderUL_Recurse(node, y, cellOrigin, widthUL, groupOffset, imagePath, textArray, mergeCellMap, childrenNumArray)
 {
 nodeUL: {
         if (node.kind !== kindUL)
@@ -686,6 +699,7 @@ nodeUL: {
         var cell = cellOrigin.Offset(y, x);
 
         textArray[y][x] = node.text;
+        childrenNumArray[y][x] = toHexWord(y) + toHexWord(getNumLeaves(node));
 
         if (node.comment)
         {
@@ -796,7 +810,7 @@ nodeUL: {
 
     for (var i = 0; i < node.children.length; i++)
     {
-        y = renderUL_Recurse(node.children[i], y, cellOrigin, widthUL, groupOffset, imagePath, textArray, mergeCellMap);
+        y = renderUL_Recurse(node.children[i], y, cellOrigin, widthUL, groupOffset, imagePath, textArray, mergeCellMap, childrenNumArray);
     }
 
     return y;
@@ -1113,6 +1127,7 @@ function render(sheet, nodeH1, checkSheetData)
 
     {(function(){
         var textArray = new2dArray(totalRows, totalItemWidth);
+        var childrenNumArray = new2dArray(totalRows, totalItemWidth);
         var mergeCellMap = new2dArray(totalRows, totalItemWidth + 1);   // 番兵用に1列多めに確保
         var imagePath = "images";
 
@@ -1120,7 +1135,7 @@ function render(sheet, nodeH1, checkSheetData)
             imagePath += "/" + nodeH1.variables.imagePath;
         }
 
-        renderUL_Recurse(nodeH1, 0, cellUL, totalItemWidth, groupOffset, imagePath, textArray, mergeCellMap);
+        renderUL_Recurse(nodeH1, 0, cellUL, totalItemWidth, groupOffset, imagePath, textArray, mergeCellMap, childrenNumArray);
 
         //var startTime = performance.now();
         //var result = [];
@@ -1154,7 +1169,113 @@ function render(sheet, nodeH1, checkSheetData)
             pictureRects.push({ width: commentShape.Width, height: commentShape.Height });
         }
 
-        var rowHeight = betterAutoFit(cellUL, mergeCellMap, headerColumnWidth);
+        var widthMap = mergeCellMapToWidthMap(mergeCellMap);
+
+        /*
+=IF(MID(OFFSET($D21,0,-1),COLUMNS($D21:D21),1)="-",FALSE,
+    IF(MID(OFFSET($D21,0,-1),COLUMNS($D21:D21),1)="x",COUNTIF($M21,"*チェック可")>0,
+        COUNTIF(
+            OFFSET($M$21,
+                HEX2DEC(
+                    MID(
+                        OFFSET($D$21,-1,-1),
+                        1+8*HEX2DEC(
+                            MID(
+                                OFFSET($D21,0,-1),
+                                LEN(OFFSET($D21,0,-1))-3-4*HEX2DEC(
+                                    MID(
+                                        OFFSET($D21,0,-1),
+                                        COLUMNS($D21:D21),
+                                        1
+                                    )
+                                ),
+                                4
+                            )
+                        ),
+                        4
+                    )
+                ),
+                0,
+                HEX2DEC(
+                    MID(
+                        OFFSET($D$21,-1,-1),
+                        1+8*HEX2DEC(
+                            MID(
+                                OFFSET($D21,0,-1),
+                                LEN(OFFSET($D21,0,-1))-3-4*HEX2DEC(
+                                    MID(
+                                        OFFSET($D21,0,-1),
+                                        COLUMNS($D21:D21),
+                                        1
+                                    )
+                                ),
+                                4
+                            )
+                        )+4,
+                        4
+                    )
+                ),
+            ),
+            "*チェック可"
+        )>0
+    )
+)
+        */
+        (function() {
+            var height = childrenNumArray.length;
+            var width = childrenNumArray[0].length;
+            for (var x = 0; x < width; x++) {
+                for (var y = 0; y < height; y++) {
+                    if (widthMap[y][x] === 0) {
+                        continue;
+                    }
+                    for (var i = y + 1; i < height; i++) {
+                        if (childrenNumArray[i][x] !== null) {
+                            break;
+                        }
+                        childrenNumArray[i][x] = childrenNumArray[y][x];
+                    }
+                }
+            }
+            // データをまとめて各セルはデータへのインデックスを持つようにする
+            // ただし1行の行はデータとして持たない
+            var dataToIndex = {};
+            var data = [];
+            var rowText = [];
+            for (var y = 0; y < height; y++) {
+                var iArray = [];
+                var indexArray = [];
+                for (var x = 0; x < width; x++) {
+                    if (childrenNumArray[y][x] === null) {
+                        iArray.push("-");
+                        continue;
+                    }
+                    if (parseInt(childrenNumArray[y][x].slice(-4), 16) == 1) {
+                        iArray.push("x");
+                        continue;
+                    }
+                    var d = childrenNumArray[y][x];
+                    if (!(d in dataToIndex)) {
+                        dataToIndex[d] = data.length;
+                        data.push(d);
+                    }
+                    var index = toHexWord(dataToIndex[d]);
+                    var rowIndex = indexArray.length;
+                    if (rowIndex >= 16) {
+                        // TODO: エラー
+                    }
+                    iArray.push(rowIndex.toString(16));
+                    indexArray.unshift(index);
+                }
+                rowText.push(iArray.join('') + indexArray.join(''));
+            }
+            for (var y = 0; y < height; y++) {
+                cellUL.Offset(y, -1).Value = rowText[y];
+            }
+            cellUL.Offset(-1, -1).Value = data.join('');
+        })();
+
+        var rowHeight = betterAutoFit(cellUL, widthMap, headerColumnWidth);
 
         MergeULCells(cellUL, mergeCellMap);
 
@@ -1239,8 +1360,7 @@ function mergeCellMapToWidthMap(mergeCellMap) {
     return result;
 }
 
-function betterAutoFit(cellOrigin, mergeCellMap, headerColumnWidth) {
-    var widthMap = mergeCellMapToWidthMap(mergeCellMap);
+function betterAutoFit(cellOrigin, widthMap, headerColumnWidth) {
     var height = widthMap.length;
     if (height === 0) {
         return;
