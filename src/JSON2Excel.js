@@ -1243,15 +1243,16 @@ function render(sheet, nodeH1, checkSheetData)
             var data = [];
             var rowText = [];
             for (var y = 0; y < height; y++) {
-                var iArray = [];
-                var indexArray = [];
+                var rowIndices = [];
+                var indices = [];
+                var indexToRowIndex = {};
                 for (var x = 0; x < width; x++) {
                     if (childrenNumArray[y][x] === null) {
-                        iArray.push("-");
+                        rowIndices.push("-");
                         continue;
                     }
                     if (parseInt(childrenNumArray[y][x].slice(-4), 16) == 1) {
-                        iArray.push("x");
+                        rowIndices.push("x");
                         continue;
                     }
                     var d = childrenNumArray[y][x];
@@ -1260,14 +1261,17 @@ function render(sheet, nodeH1, checkSheetData)
                         data.push(d);
                     }
                     var index = toHexWord(dataToIndex[d]);
-                    var rowIndex = indexArray.length;
+                    if (!(index in indexToRowIndex)) {
+                        indexToRowIndex[index] = indices.length;
+                        indices.unshift(index);
+                    }
+                    var rowIndex = indexToRowIndex[index];
                     if (rowIndex >= 16) {
                         // TODO: エラー
                     }
-                    iArray.push(rowIndex.toString(16));
-                    indexArray.unshift(index);
+                    rowIndices.push(rowIndex.toString(16));
                 }
-                rowText.push(iArray.join('') + indexArray.join(''));
+                rowText.push(rowIndices.join('') + indices.join(''));
             }
             for (var y = 0; y < height; y++) {
                 cellUL.Offset(y, -1).Value = rowText[y];
