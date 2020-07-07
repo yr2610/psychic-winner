@@ -699,7 +699,14 @@ nodeUL: {
         var cell = cellOrigin.Offset(y, x);
 
         textArray[y][x] = node.text;
-        childrenNumArray[y][x] = toHexWord(y) + toHexWord(getNumLeaves(node));
+
+        (function() {
+            var numLeaves = getNumLeaves(node);
+            var childrenNumData = toHexWord(y) + toHexWord(numLeaves);
+            for (var i = 0; i < numLeaves; i++) {
+                childrenNumArray[y + i][x] = childrenNumData;
+            }
+        })();
 
         if (node.comment)
         {
@@ -1224,19 +1231,20 @@ function render(sheet, nodeH1, checkSheetData)
         (function() {
             var height = childrenNumArray.length;
             var width = childrenNumArray[0].length;
-            for (var x = 0; x < width; x++) {
-                for (var y = 0; y < height; y++) {
-                    if (widthMap[y][x] === 0) {
-                        continue;
-                    }
-                    for (var i = y + 1; i < height; i++) {
-                        if (childrenNumArray[i][x] !== null) {
-                            break;
-                        }
-                        childrenNumArray[i][x] = childrenNumArray[y][x];
-                    }
-                }
-            }
+            //for (var x = 0; x < width; x++) {
+            //    for (var y = 0; y < height; y++) {
+            //        if (widthMap[y][x] === 0) {
+            //            continue;
+            //        }
+            //        // FIXME: これだと無関係の null まで突き進む。 numChildren で処理するべき。nullは結合セルなので表面上はバグらないけど直しておきたい
+            //        for (var i = y + 1; i < height; i++) {
+            //            if (childrenNumArray[i][x] !== null) {
+            //                break;
+            //            }
+            //            childrenNumArray[i][x] = childrenNumArray[y][x];
+            //        }
+            //    }
+            //}
             // データをまとめて各セルはデータへのインデックスを持つようにする
             // ただし1行の行はデータとして持たない
             var dataToIndex = {};
@@ -1267,7 +1275,10 @@ function render(sheet, nodeH1, checkSheetData)
                     }
                     var rowIndex = indexToRowIndex[index];
                     if (rowIndex >= 16) {
-                        // TODO: エラー
+                        var errorMessage = "シート: " + nodeH1.text + "\n階層が深すぎます。";
+
+                        finalizeExcel();
+                        Error(errorMessage);
                     }
                     rowIndices.push(rowIndex.toString(16));
                 }
