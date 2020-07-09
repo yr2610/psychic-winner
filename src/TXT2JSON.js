@@ -393,7 +393,7 @@ function preProcessConditionalCompile(lines) {
             return;
         }
 
-        var name = option.trim()
+        var name = option.trim();
         if (!/^([a-zA-Z_]\w*)?$/.test(name)) {
             var errorMessage = "@undef コマンドの文法が正しくありません。";
             throw new ParseError(errorMessage, lineObj);
@@ -405,8 +405,9 @@ function preProcessConditionalCompile(lines) {
             //}
         }
 
-        // undef の場合は set false 扱い
-        parseSet(name + " = false", lineObj);
+        // undef の場合は set false 扱い、にしようと思ったけど undef の後で define で redefine 扱いになるので
+        // 素直に削除だけにしておく
+        //parseSet(name + " = false", lineObj);
     }
 
     function parseSet(option, lineObj) {
