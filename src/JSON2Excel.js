@@ -1180,7 +1180,7 @@ function render(sheet, nodeH1, checkSheetData)
 
         /*
 =IF(MID(OFFSET($D21,0,-1),COLUMNS($D21:D21),1)="-",FALSE,
-    IF(MID(OFFSET($D21,0,-1),COLUMNS($D21:D21),1)="x",COUNTIF($M21,"*チェック可")=0,
+    IF(MID(OFFSET($D21,0,-1),COLUMNS($D21:D21),1)="x",COUNTIF($M21,"*チェック*可")=0,
         COUNTIF(
             OFFSET($M$21,
                 HEX2DEC(
@@ -1223,7 +1223,7 @@ function render(sheet, nodeH1, checkSheetData)
                     )
                 ),
             ),
-            "*チェック可"
+            "*チェック*可"
         )=0
     )
 )
