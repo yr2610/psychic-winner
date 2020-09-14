@@ -141,21 +141,37 @@ htmlfile.write('<meta http-equiv="x-ua-compatible" content="IE=Edge"/>');
 var performance = htmlfile.parentWindow.performance;
 htmlfile.close();
 
+var includePath = [];
+
+var confFilePath = "conf.yml";
+
+confFilePath = fso.BuildPath(fso.GetParentFolderName(WScript.ScriptFullName), confFilePath);
+if (fso.FileExists(confFilePath)) {
+    var conf = CL.readYAMLFile(confFilePath);
+    if (!_.isUndefined(conf.includePath)) {
+        includePath = conf.includePath;
+    }
+}
+
 // preprocess
 // include とかコメント削除とか
 // 入れ子の include にも対応
-function preProcess(filePath, filePaths)
-{
+function preProcess(filePath, filePaths) {
     var lines = [];
-    
-    preProcess_Recurse(filePath, lines, filePaths);
+    var pathStack = [];
+
+    pathStack.push({
+        includePath: null
+    });
+    preProcess_Recurse(filePath, lines, filePaths, pathStack);
 
     return lines;
 }
-function preProcess_Recurse(filePath, lines, filePaths)
-{
+function preProcess_Recurse(filePath, lines, filePaths, pathStack) {
     filePaths.push(filePath);
     var parentFolderName = fso.GetParentFolderName(filePath);
+
+    _.last(pathStack).parentFolder = parentFolderName;
 
     /**/
     stream.Type = adTypeText;
@@ -266,24 +282,93 @@ function preProcess_Recurse(filePath, lines, filePaths)
             continue;
         }
 
-        var include = line.match(/^<<\[\s*(.+)\s*\]$/);
-        if (include)
-        {
-            var path = fso.BuildPath(parentFolderName, include[1]);
-
-            // ファイルが存在するか確認
-            (function () {
-                var fso = new ActiveXObject("Scripting.FileSystemObject");
-
-                if (!fso.FileExists(path)) {
-                    var relativeFilePath = getRelativePath(path, rootFilePath, fso);
-                    var errorMessage = "include ファイル\n" + relativeFilePath + "\nが存在しません";
-
-                    Error(errorMessage, filePath, lineArray.index);
+        function getLastLocalPath() {
+            for (var i = pathStack.length - 1; i >= 0; --i) {
+                var path = pathStack[i];
+                if (!path.includePath) {
+                    return path.parentFolder;
                 }
-            })();
+            }
+            // ここにくるはずはない
+            return null;
+        }
+
+        function findIncludeFile(targetFilePath) {
+            var overrideEnalbed = false;
+
+            // １文字目が '/' の場合は、大元を優先する指定とみなす
+            if (targetFilePath.slice(0, 1) == '/') {
+                overrideEnalbed = true;
+                targetFilePath = targetFilePath.slice(1);
+            }
+
+            if (overrideEnalbed) {
+                // オーバーライド指定がある場合は、大元のファイルと同じ場所だけを探す
+                // ローカル配下の最後に include されたファイルの場所（パスをさかのぼって、最初にインクルードパスが使われなかったファイル）を使う
+                var lastLocalPath = getLastLocalPath();
+                var path = fso.BuildPath(lastLocalPath, targetFilePath);
+
+                pathStack.push({
+                    includePath: null
+                });
             
-            preProcess_Recurse(path, lines, filePaths);
+                return fso.FileExists(path) ? path : null;
+            }
+
+            // まずは include 元と同じ場所を探す
+            var path = fso.BuildPath(parentFolderName, targetFilePath);
+
+            if (fso.FileExists(path)) {
+                pathStack.push({
+                    includePath: _.last(pathStack).includePath
+                });
+
+                return path;
+            }
+
+            // include path を順に探して最初に見つかったのを採用
+            for (var i = 0; i < includePath.length; i++) {
+                path = fso.BuildPath(includePath[i], targetFilePath);
+
+                if (fso.FileExists(path)) {
+                    pathStack.push({
+                        includePath: includePath[i]
+                    });
+
+                    return path;
+                }
+            }
+
+            return null;
+        }
+
+        var include = line.match(/^<<\[\s*(.+)\s*\]$/);
+        if (include) {
+            var includeFile = include[1];
+            var path = findIncludeFile(includeFile);
+
+            if (!path) {
+                var errorMessage = "include ファイル\n" + includePath + "\nが存在しません";
+
+                Error(errorMessage, filePath, lineArray.index);
+            }
+
+//            var path = fso.BuildPath(parentFolderName, include[1]);
+//
+//            // ファイルが存在するか確認
+//            (function () {
+//                var fso = new ActiveXObject("Scripting.FileSystemObject");
+//
+//                if (!fso.FileExists(path)) {
+//                    var relativeFilePath = getRelativePath(path, rootFilePath, fso);
+//                    var errorMessage = "include ファイル\n" + relativeFilePath + "\nが存在しません";
+//
+//                    Error(errorMessage, filePath, lineArray.index);
+//                }
+//            })();
+            
+            preProcess_Recurse(path, lines, filePaths, pathStack);
+            pathStack.pop();
             continue;
         }
 
