@@ -293,50 +293,86 @@ function preProcess_Recurse(filePath, lines, filePaths, pathStack) {
             return null;
         }
 
-        function findIncludeFile(targetFilePath) {
-            var overrideEnalbed = false;
-
-            // １文字目が '/' の場合は、大元を優先する指定とみなす
-            if (targetFilePath.slice(0, 1) == '/') {
-                overrideEnalbed = true;
-                targetFilePath = targetFilePath.slice(1);
+        function findIncludeFileOverride(targetFilePath, pathStack) {
+            // override の候補となるパスを返す
+            function getOverridePaths(targetFilePath) {
+                for (var i = pathStack.length - 1; i >= 0; --i) {
+                    var path = pathStack[i];
+                    if (!path.includePath) {
+                        return pathStack.slice(i);
+                    }
+                }
+                // ここにくるはずはない
+                return null;
             }
 
-            if (overrideEnalbed) {
-                // オーバーライド指定がある場合は、大元のファイルと同じ場所だけを探す
-                // ローカル配下の最後に include されたファイルの場所（パスをさかのぼって、最初にインクルードパスが使われなかったファイル）を使う
-                var lastLocalPath = getLastLocalPath();
-                var path = fso.BuildPath(lastLocalPath, targetFilePath);
-
-                pathStack.push({
-                    includePath: null
-                });
-            
-                return fso.FileExists(path) ? path : null;
+            // include すべきファイルを見つける
+            function findIncludeFilePath(overridePaths) {
+                var lastPath = _.last(overridePaths);
+                var sentinel = {
+                    includePath: (!lastPath.includePath) ? "dummy" : null
+                };
+                overridePaths.push(sentinel);
+                for (var i = 0; i < overridePaths.length; i++) {
+                    var overridePath = overridePaths[i];
+                    if (overridePath.includePath == overridePaths[i + 1].includePath) {
+                        continue;
+                    }
+                    var path = fso.BuildPath(overridePath.parentFolder, targetFilePath);
+                    if (fso.FileExists(path)) {
+                        pathStack.push({
+                            includePath: overridePath.includePath
+                        });
+                        return path;
+                    }
+                }
+                // ここにくるはずはない
+                return null;
             }
 
-            // まずは include 元と同じ場所を探す
-            var path = fso.BuildPath(parentFolderName, targetFilePath);
+            var overridePaths = getOverridePaths(targetFilePath);
 
-            if (fso.FileExists(path)) {
-                pathStack.push({
-                    includePath: _.last(pathStack).includePath
-                });
+            return findIncludeFilePath(overridePaths);
+        }
 
-                return path;
-            }
-
-            // include path を順に探して最初に見つかったのを採用
+        function findIncludeFileIncludePath(targetFilePath, pathStack) {
             for (var i = 0; i < includePath.length; i++) {
-                path = fso.BuildPath(includePath[i], targetFilePath);
-
+                var path = fso.BuildPath(includePath[i], targetFilePath);
                 if (fso.FileExists(path)) {
                     pathStack.push({
                         includePath: includePath[i]
                     });
-
                     return path;
                 }
+            }
+            // include path 内に指定のファイルが見つからなかった
+            return null;
+        }
+
+        function findIncludeFile(targetFilePath) {
+            // 最初の2文字が '~/' の場合は override 指定とみなす
+            // include 元の同名のファイルを優先して読みに行く
+            // home で最後に include した場所から include 方向に向かって、そのパスで最後に inlcude した場所を検索していく
+            if (targetFilePath.slice(0, 2) == '~/') {
+                targetFilePath = targetFilePath.slice(2);
+                return findIncludeFileOverride(targetFilePath, pathStack);
+            }
+
+            // 最初の1文字が '/' の場合は include path を順に探して最初に見つかったのを採用
+            if (targetFilePath.slice(0, 1) == '/') {
+                targetFilePath = targetFilePath.slice(1);
+                return findIncludeFileIncludePath(targetFilePath, pathStack);
+            }
+
+            // include 元と同じ場所を探す
+            var filePath = fso.BuildPath(parentFolderName, targetFilePath);
+
+            if (fso.FileExists(filePath)) {
+                pathStack.push({
+                    includePath: _.last(pathStack).includePath
+                });
+
+                return filePath;
             }
 
             return null;
