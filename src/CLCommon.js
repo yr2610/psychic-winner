@@ -29,8 +29,18 @@ CL.writeTextFileUTF8 = function (s, outFilePath) {
   s = s.split("\n").join("\r\n"); // メモ帳で開けるように…
 
   stream.WriteText(s, adWriteLine);
+
+  stream.Position = 0;
+  stream.Type = adTypeBinary;
+  stream.Position = 3;
+  var bytes = stream.Read();
+  stream.Position = 0;
+  stream.SetEOS();
+  stream.Write(bytes);
+
   stream.SaveToFile(outFilePath, adSaveCreateOverWrite);
   stream.Close();
+  stream = null;
 };
 
 // 圧縮されてれば展開
@@ -100,7 +110,7 @@ CL.ReadJSONFromSheet = CL.readJSONFromSheet;
 CL.writeJSONToSheet = function (object, sheet) {
   var sJSON = JSON.stringify(object, undefined, 4);
   var sJSONArray = sJSON.split("\n");
-  var excelArray = jsArray1DToExcelRangeArray(sJSONArray, sJSONArray.length);
+  var excelArray = jsArray1dColumnMajorToSafeArray2d(sJSONArray, sJSONArray.length);
 
   // まずクリア
   sheet.Cells.ClearContents();

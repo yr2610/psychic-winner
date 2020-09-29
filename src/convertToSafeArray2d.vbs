@@ -18,6 +18,8 @@
     jsArray2dToSafeArray2d_old = result
 End Function
 
+' 渡す配列は全要素に値が代入されてないとダメっぽい
+' 場所の確保（new Array(n)）だけだとバグる
 Function jsArray2dToSafeArray2d(jsArray)
     Dim l1, l2, result
     Dim i, j

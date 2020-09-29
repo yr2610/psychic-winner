@@ -177,36 +177,38 @@ function preProcess_Recurse(filePath, lines, filePaths, pathStack) {
     stream.Type = adTypeText;
     // XXX: charset の _autodetect_all が判別に失敗することがある問題がどうにもならないので、超適当に判別
     // 一旦 Shift JIS としてロード
-    stream.charset = "Shift_JIS";
+ //   stream.charset = "Shift_JIS";
+    // UTF-8 BOM なし 専用
+    stream.charset = "UTF-8";
     stream.Open();
     stream.LoadFromFile(filePath);
     var allLines = stream.ReadText(adReadAll);
     stream.Close();
 
-    // 先頭の文字が Unicode っぽければロードしなおす
-    {
-        var charCode0 = allLines.charCodeAt(0);
-        var charCode1 = allLines.charCodeAt(1);
-        // UTF8 with BOM
-        if (charCode0 === 0x30fb && charCode1 === 0xff7f)
-        {
-            stream.charset = "UTF-8";
-        }
-        else
-        // UTF-16LE, BE
-        if (charCode0 === 0xf8f3 && charCode1 === 0xf8f2 ||
-            charCode0 === 0xf8f2 && charCode1 === 0xf8f3)
-        {
-            stream.charset = "UTF-16";
-        }
-        if (stream.charset !== "Shift_JIS")
-        {
-            stream.Open();
-            stream.LoadFromFile(filePath);
-            allLines = stream.ReadText(adReadAll);
-            stream.Close();
-        }
-    }
+//    // 先頭の文字が Unicode っぽければロードしなおす
+//    {
+//        var charCode0 = allLines.charCodeAt(0);
+//        var charCode1 = allLines.charCodeAt(1);
+//        // UTF8 with BOM
+//        if (charCode0 === 0x30fb && charCode1 === 0xff7f)
+//        {
+//            stream.charset = "UTF-8";
+//        }
+//        else
+//        // UTF-16LE, BE
+//        if (charCode0 === 0xf8f3 && charCode1 === 0xf8f2 ||
+//            charCode0 === 0xf8f2 && charCode1 === 0xf8f3)
+//        {
+//            stream.charset = "UTF-16";
+//        }
+//        if (stream.charset !== "Shift_JIS")
+//        {
+//            stream.Open();
+//            stream.LoadFromFile(filePath);
+//            allLines = stream.ReadText(adReadAll);
+//            stream.Close();
+//        }
+//    }
     /*/
     // ファイルを読み取り専用で開く
     // とりあえず Unicode(UTF-16)専用
@@ -1753,9 +1755,8 @@ while (!srcLines.atEnd) {
 
     // 自由にプロパティを追加できるようにしてしまう…
     var property = line.match(/^\s*\[(.+)\]:\s+(.+)$/);
-    if (property)
-    {
-        stack.peek().variables[property[1]] = property[2];
+    if (property) {
+        stack.peek().variables[_.trim(property[1])] = _.trim(property[2]);
     }
 
 }
@@ -2612,6 +2613,8 @@ function binToHex(binStr)
 // UTF-8 with BOM, UTF-16 BE, LE のみ判定。それ以外は shift JIS を返す
 function GetCharsetFromTextfile(objSt, path)
 {
+    return "UTF-8";
+
     objSt.type = adTypeBinary;
     objSt.Open();
     objSt.LoadFromFile(path);
@@ -2685,8 +2688,17 @@ for (var filePath in srcTextsToRewrite)
 
     stream.Close();
 
+    streamOut.Position = 0;
+    streamOut.Type = adTypeBinary;
+    streamOut.Position = 3;
+    var bytes = streamOut.Read();
+    streamOut.Position = 0;
+    streamOut.SetEOS();
+    streamOut.Write(bytes);
+
     streamOut.SaveToFile(filePath, adSaveCreateOverWrite);
     streamOut.Close();
+    streamOut = null;
 }
 })();
 
@@ -2811,8 +2823,17 @@ for (var i = 0; i < jsonArray.length; i++)
     stream.WriteText(jsonArray[i], adWriteLine);
 }
 
+stream.Position = 0;
+stream.Type = adTypeBinary;
+stream.Position = 3;
+var bytes = stream.Read();
+stream.Position = 0;
+stream.SetEOS();
+stream.Write(bytes);
+
 stream.SaveToFile(outfilePath, adSaveCreateOverWrite);
 stream.Close();
+stream = null;
 /*/
 var outfile = fso.OpenTextFile(outfilePath, FORWRITING, true, TRISTATE_FALSE);
 

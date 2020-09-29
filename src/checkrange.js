@@ -189,11 +189,17 @@ CheckRange.prototype.getIdToY = function() {
 
 CheckRange.prototype.createEmptyArray2d = function() {
     var array = [];
-    array[0] = new Array(this.width);   // 1行目のサイズで２次元配列の大きさを判断することが多いので、1行目だけサイズ分確保
-    for (var y = 1; y < this.height; y++)
-    {
-        array[y] = [];
+    //array[0] = new Array(this.width);   // 1行目のサイズで２次元配列の大きさを判断することが多いので、1行目だけサイズ分確保
+    //for (var y = 1; y < this.height; y++)
+    //{
+    //    array[y] = [];
+    //}
+    for (var y = 0; y < this.height; y++) {
+        // new Array() で作って一度も代入してないと safe array 変換でバグる
+        // Array.prototype.push.apply() で新しい配列に入れなおすだけで正常動作するっぽいけど、最初から null 埋めしておく
+        array.push(_.fill(Array(this.width), null));
     }
+
     return array;
 };
 
