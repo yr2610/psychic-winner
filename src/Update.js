@@ -408,6 +408,16 @@ function mergeAndApplyToSheet(root, book, parentData, theirsData, conflicts)
                     theirs[y][x] = mine[y][x];
                     continue;
                 }
+                // XXX: <<< null, "" の区別をしないように
+                function isBlank(v) {
+                    return (v === null || v === "" || _.isUndefined(v));
+                }
+                if (isBlank(theirs[y][x]) && isBlank(mine[y][x])) {
+                    // どちらも空欄なら conflict としない
+                    // theirs 採用
+                    continue;
+                }
+                // XXX: >>> null, "" の区別をしないように
                 // conflict に追加しつつ theirs 採用
                 addconflict(nodeH1, checkRange, x, y, parent[y][x], theirs[y][x], mine[y][x]);
             }

@@ -301,8 +301,16 @@ CheckRange.prototype.getChangeFromSheetValues = function(items) {
             }
             // JSON stringify で消されないように、とりあえず null を入れておく
             var v = fromArray[y][x];
-            if (v !== toArray[y][x])
-            {
+            // XXX: <<< null, "" の区別をしないように
+            function isDifferent(v0, v1) {
+                //return v0 != v1;
+                function blankToNull(v) {
+                    return (_.isUndefined(v) || v === "") ? null : v;
+                }
+                return blankToNull(v0) === blankToNull(v1);
+            }
+            // XXX: >>> null, "" の区別をしないように
+            if (isDifferent(v, toArray[y][x])) {
                 var v = (typeof v === "undefined") ? null : v;
                 
                 values[this.headers[x]] = v;
