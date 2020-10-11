@@ -734,10 +734,11 @@ var root = {
     variables: {},
     children: [],
 
+    // 以下はJSON出力前に削除する
     // UID重複チェック用
     // 「複数人で１つのファイルを作成（ID自動生成）してマージしたら衝突」は考慮しなくて良いぐらいの確率だけど、「IDごとコピペして重複」が高頻度で発生する恐れがあるので
-    // JSON出力前に削除する
     uidList: {}
+
 };
 stack.push(root);
 
@@ -1064,6 +1065,36 @@ while (!srcLines.atEnd) {
             }
             initialValues[name] = value;
         }
+        (function() {
+            var match = text.match(/^\s*\(([^\)]+)\)\s*(.+)$/);
+            if (match === null) {
+                // TODO: デフォルト値が設定されていれば指定がなくてもセット
+                return;
+            }
+            text = match[2];
+            initialValues = {};
+            var params = match[1].split(',');
+            var columnNameIndex = 0;
+            params.forEach(function(param) {
+                param = _.trim(param);
+                var nameValueMatch = param.match(/^([A-Za-z_]\w*)\s*:\s(.+)$/);
+                if (nameValueMatch) {
+                    var name = nameValueMatch[1];
+                    var value = nameValueMatch[2];
+                    initialValues[name] = value;
+                    return;
+                }
+                // TODO: stackから上にさかのぼって columnNames を見つける
+                var columnNames = [];
+                if (columnNameIndex >= columnNames.length) {
+                    // TODO: 範囲外エラー
+                }
+                initialValues[columnNames[columnNameIndex]] = param;
+                // TODO: ダブルクォーテーション対応させる
+                columnNameIndex++;
+            });
+        })();
+
 
         while (/.* {2}$/.test(text)) {
             // 改行の次の行の行頭のスペースは無視するように
@@ -1758,6 +1789,138 @@ while (!srcLines.atEnd) {
     if (property) {
         stack.peek().variables[_.trim(property[1])] = _.trim(property[2]);
     }
+
+    var ColumnValueError = function(errorMessage, lineObj) {
+        this.errorMessage = errorMessage;
+        this.lineObj = lineObj;
+    };
+
+    // 行頭の (foo: 1, bar) 的な部分を parse
+    function parseColumnValues(s, _isValueBase) {
+        var isValueBase = _.isUndefined(isValueBase) ? true : isValueBase;
+
+        var match = _.trimLeft(s).match(/^\|\((.+)\)\|(.*)$/);
+        if (!match) {
+            return null;
+        }
+        var remain = match[2];
+        var columnValues = [];
+        var params = match[1].split(',');
+        params.forEach(function(param) {
+            param = _.trim(param);
+            var keyMatch = param.match(/^[A-Za-z_]\w*$/);
+            if (keyMatch) {
+                var data = isValueBase ? { value: param } : { key: param };
+                columnValues.push(data);
+                return;
+            }
+            var keyValueMatch = param.match(/^([A-Za-z_]\w*)\s*:\s*(.*)(.*)$/);
+            if (keyValueMatch) {
+                var value = keyValueMatch[2];
+                if (value.slice(0, 1) === '"' && value.slice(-1) === '"') {
+                    value = eval(keyValueMatch[2]);
+                }
+                columnValues.push({
+                    key: keyValueMatch[1],
+                    value: value
+                });
+                return;
+            }
+            var value = param;
+            if (value.slice(0, 1) === '"' && value.slice(-1) === '"') {
+                value = eval(keyValueMatch[2]);
+            }
+            columnValues.push({ value: value });
+        });
+
+        return {
+            columnValues: columnValues,
+            remain: remain
+        }
+    }
+
+    try {
+
+    // 初期値宣言
+    (function() {
+        var parse = parseColumnValues(line);
+        //WScript.Echo(JSON.stringify(parse, undefined, 4));
+        if (parse === null) {
+            return;
+        }
+        var columnNames = [];
+        var defaultValues = {};
+        parse.columnValues.forEach(function(param) {
+            if (_.isUndefined(param.key)) {
+                // key がない場合エラー
+                var errorMessage = "列名の順序宣言には列名が必要です。";
+                throw new ColumnValueError(errorMessage, lineObj);
+            }
+            columnNames.push(param.key);
+            if (!_.isUndefined(param.value)) {
+                defaultValues[param.key] = [
+                    { value: param.value }
+                ];
+            }
+        });
+        stack.peek().columnNames = columnNames;
+        stack.peek().defaultColumnValues = defaultValues;
+
+        WScript.Echo(JSON.stringify(stack.peek().columnNames, undefined, 4));
+        WScript.Echo(JSON.stringify(stack.peek().defaultColumnValues, undefined, 4));
+
+    })();
+
+    // デフォルト値を正規表現で指定
+    (function() {
+        var match = _.trimRight(line).match(/^\/(.+)\/\s+(.+)$/);
+
+        if (!match) {
+            return;
+        }
+
+        var parse = parseColumnValues(match[2]);
+
+        if (parse === null) {
+            return;
+        }
+
+        var re = new RegExp(match[1]);
+        var defaultValues = stack.peek().defaultColumnValues;
+
+        if (_.isUndefined(defaultValues)) {
+            defaultValues = {};
+        }
+
+        parse.columnValues.forEach(function(param) {
+            // TODO: (error)key, value が両方そろってない場合エラー
+            if (_.isUndefined(defaultValues[param.key])) {
+                defaultValues[param.key] = [];
+            }
+            defaultValues[param.key].push({
+                re: re,
+                value: param.value
+            });
+        });
+
+        stack.peek().defaultColumnValues = defaultValues;
+
+        WScript.Echo(JSON.stringify(stack.peek().defaultColumnValues, undefined, 4));
+
+    })();
+
+    }
+    catch (e) {
+        (function (errorMessage, lineObj) {
+            if (_.isUndefined(lineObj)) {
+                Error(errorMessage);
+            }
+            else {
+                Error(errorMessage, lineObj.filePath, lineObj.lineNum);
+            }
+        })(e.errorMessage, e.lineObj);
+    }
+
 
 }
 
@@ -2583,6 +2746,8 @@ deleteNullProperty_Recurse(root);
 
 // JSON出力前に不要なプロパティを削除する
 CL.deletePropertyForAllNodes(root, "uidList");
+CL.deletePropertyForAllNodes(root, "columnNames");
+CL.deletePropertyForAllNodes(root, "defaultColumnValues");
 CL.deletePropertyForAllNodes(root, "lineObj");
 CL.deletePropertyForAllNodes(root, "indent");
 CL.deletePropertyForAllNodes(root, "parent");
