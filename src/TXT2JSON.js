@@ -1866,8 +1866,8 @@ while (!srcLines.atEnd) {
         stack.peek().columnNames = columnNames;
         stack.peek().defaultColumnValues = defaultValues;
 
-        WScript.Echo(JSON.stringify(stack.peek().columnNames, undefined, 4));
-        WScript.Echo(JSON.stringify(stack.peek().defaultColumnValues, undefined, 4));
+        //WScript.Echo(JSON.stringify(stack.peek().columnNames, undefined, 4));
+        //WScript.Echo(JSON.stringify(stack.peek().defaultColumnValues, undefined, 4));
 
     })();
 
@@ -1905,7 +1905,7 @@ while (!srcLines.atEnd) {
 
         stack.peek().defaultColumnValues = defaultValues;
 
-        WScript.Echo(JSON.stringify(stack.peek().defaultColumnValues, undefined, 4));
+        //WScript.Echo(JSON.stringify(stack.peek().defaultColumnValues, undefined, 4));
 
     })();
 
