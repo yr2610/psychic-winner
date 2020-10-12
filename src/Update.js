@@ -397,27 +397,23 @@ function mergeAndApplyToSheet(root, book, parentData, theirsData, conflicts)
             }
             for (var y = 0; y < checkRange.height; y++)
             {
-                if (theirs[y][x] === mine[y][x] ||
-                    parent[y][x] === mine[y][x])
-                {
+                // null, "", undefined の区別をしないように
+                function equals(v0, v1) {
+                    //return v0 != v1;
+                    function blankToNull(v) {
+                        return (_.isUndefined(v) || v === "") ? null : v;
+                    }
+                    return blankToNull(v0) === blankToNull(v1);
+                }
+                if (equals(theirs[y][x], mine[y][x]) ||
+                    equals(parent[y][x], mine[y][x])) {
                     // theirs 採用
                     continue;
                 }
-                if (theirs[y][x] === parent[y][x])
-                {
+                if (equals(theirs[y][x], parent[y][x])) {
                     theirs[y][x] = mine[y][x];
                     continue;
                 }
-                // XXX: <<< null, "" の区別をしないように
-                function isBlank(v) {
-                    return (v === null || v === "" || _.isUndefined(v));
-                }
-                if (isBlank(theirs[y][x]) && isBlank(mine[y][x])) {
-                    // どちらも空欄なら conflict としない
-                    // theirs 採用
-                    continue;
-                }
-                // XXX: >>> null, "" の区別をしないように
                 // conflict に追加しつつ theirs 採用
                 addconflict(nodeH1, checkRange, x, y, parent[y][x], theirs[y][x], mine[y][x]);
             }
