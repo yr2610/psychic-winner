@@ -2804,7 +2804,6 @@ function GetCharsetFromTextfile(objSt, path)
 (function(){
 // 先に別名でコピーして、それを読みながら、元ファイルを上書きするように
 // 元ファイルをリネームだとエディターで開いてる元ファイルが閉じてしまうので
-var streamOut = new ActiveXObject("ADODB.Stream");
 for (var filePath in srcTextsToRewrite)
 {
     var rootFileFolderName = fso.GetParentFolderName(rootFilePath);
@@ -2833,6 +2832,7 @@ for (var filePath in srcTextsToRewrite)
     stream.Open();
     stream.LoadFromFile(filePath);
 
+    var streamOut = new ActiveXObject("ADODB.Stream");
     streamOut.Type = adTypeText;
     // 元ファイルの文字コードによらず、UTF-8 with BOM固定で
     streamOut.charset = "utf-8";
