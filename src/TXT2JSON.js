@@ -11,6 +11,10 @@ var runInCScript = (function() {
     return (fso.getBaseName(WScript.FullName).toLowerCase() === "cscript");
 })();
 
+function printJSON(json) {
+    WScript.Echo(JSON.stringify(json, undefined, 4));
+}
+
 function makeLineinfoString(filePath, lineNum)
 {
     var s = "";
@@ -315,7 +319,7 @@ function preProcess_Recurse(filePath, lines, filePaths, pathStack) {
                     includePath: (!lastPath.includePath) ? "dummy" : null
                 };
                 overridePaths.push(sentinel);
-                for (var i = 0; i < overridePaths.length; i++) {
+                for (var i = 0; i < overridePaths.length - 1; i++) {
                     var overridePath = overridePaths[i];
                     if (overridePath.includePath == overridePaths[i + 1].includePath) {
                         continue;
@@ -464,7 +468,7 @@ function preProcessConditionalCompile(lines) {
             return;
         }
 
-        var name = option.trim()
+        var name = option.trim();
         if (!/^([a-zA-Z_]\w*)?$/.test(name)) {
             var errorMessage = "@define コマンドの文法が正しくありません。";
             throw new ParseError(errorMessage, lineObj);
@@ -1049,8 +1053,10 @@ while (!srcLines.atEnd) {
             })();}
         }
 
-        // TODO: leaf 以外で initialValues が設定されていたらエラー出す
+        // TODO: leaf 以外で initialValues が設定されていたら削除しておく?
         var initialValues = void 0;
+
+        // 旧仕様も一応残しておく
         while (true) {
             var initialValueMatch = text.match(/^\s*\[#([A-Za-z_]\w*)\]\(([^\)]+)\)\s*(.+)$/);
             if (initialValueMatch === null) {
@@ -1065,7 +1071,59 @@ while (!srcLines.atEnd) {
             }
             initialValues[name] = value;
         }
+
+        function getLowestColumnNames() {
+            for (var i = stack.__a.length - 1; i >= 0; i--) {
+                var elem = stack.__a[i];
+                if (_.isUndefined(elem.columnNames)) {
+                    continue;
+                }
+                return {
+                    columnNames: elem.columnNames,
+                    defaultColumnValues: elem.defaultColumnValues
+                };
+            }
+            return null;
+        }
+
+        // (foo: 0, bar: "baz") 形式の初期値設定
         (function() {
+            var parse = parseColumnValues(text, true);
+            if (parse === null) {
+                return;
+            }
+
+            text = parse.remain;
+
+            if (_.isUndefined(initialValues)) {
+                initialValues = {};
+            }
+
+            var columnNames;
+            var lowestColumnNames = getLowestColumnNames();
+            if (lowestColumnNames !== null) {
+                columnNames = lowestColumnNames.columnNames;
+            }
+
+            parse.columnValues.forEach(function(param, index) {
+                var value = _.isUndefined(param.value) ? null : param.value;
+                if (!_.isUndefined(param.key)) {
+                    initialValues[param.key] = value;
+                    return;
+                }
+                if (_.isUndefined(columnNames)) {
+                    var errorMessage = "列名リストが宣言されていません。";
+                    Error(errorMessage, lineObj.filePath, lineObj.lineNum);
+                }
+                if (index >= columnNames.length) {
+                    var errorMessage = "列の初期値が列名リストの範囲外に指定されています。";
+                    Error(errorMessage, lineObj.filePath, lineObj.lineNum);
+                }
+                var key = columnNames[index];
+                initialValues[key] = value;
+            });
+            return;
+
             var match = text.match(/^\s*\(([^\)]+)\)\s*(.+)$/);
             if (match === null) {
                 // TODO: デフォルト値が設定されていれば指定がなくてもセット
@@ -1094,6 +1152,7 @@ while (!srcLines.atEnd) {
                 columnNameIndex++;
             });
         })();
+        //printJSON(initialValues);
 
 
         while (/.* {2}$/.test(text)) {
@@ -1797,9 +1856,12 @@ while (!srcLines.atEnd) {
 
     // 行頭の (foo: 1, bar) 的な部分を parse
     function parseColumnValues(s, _isValueBase) {
-        var isValueBase = _.isUndefined(isValueBase) ? true : isValueBase;
+        var isValueBase = _.isUndefined(_isValueBase) ? true : _isValueBase;
 
-        var match = _.trimLeft(s).match(/^\|\((.+)\)\|(.*)$/);
+        var match = _.trimLeft(s).match(/^\((.+)\)\s+(.*)$/);
+        if (!match) {
+            match = _.trimLeft(s).match(/^\((.+)\)\s*$/);
+        }
         if (!match) {
             return null;
         }
@@ -1814,7 +1876,7 @@ while (!srcLines.atEnd) {
                 columnValues.push(data);
                 return;
             }
-            var keyValueMatch = param.match(/^([A-Za-z_]\w*)\s*:\s*(.*)(.*)$/);
+            var keyValueMatch = param.match(/^([A-Za-z_]\w*)\s*:\s*(.*)$/);
             if (keyValueMatch) {
                 var value = keyValueMatch[2];
                 if (value.slice(0, 1) === '"' && value.slice(-1) === '"') {
@@ -1828,7 +1890,7 @@ while (!srcLines.atEnd) {
             }
             var value = param;
             if (value.slice(0, 1) === '"' && value.slice(-1) === '"') {
-                value = eval(keyValueMatch[2]);
+                value = eval(param);
             }
             columnValues.push({ value: value });
         });
@@ -1843,7 +1905,7 @@ while (!srcLines.atEnd) {
 
     // 初期値宣言
     (function() {
-        var parse = parseColumnValues(line);
+        var parse = parseColumnValues(line, false);
         //WScript.Echo(JSON.stringify(parse, undefined, 4));
         if (parse === null) {
             return;
@@ -1866,21 +1928,21 @@ while (!srcLines.atEnd) {
         stack.peek().columnNames = columnNames;
         stack.peek().defaultColumnValues = defaultValues;
 
-        //WScript.Echo(JSON.stringify(stack.peek().columnNames, undefined, 4));
-        //WScript.Echo(JSON.stringify(stack.peek().defaultColumnValues, undefined, 4));
+        //var s = "decl:\n";
+        //s += JSON.stringify(stack.peek().columnNames, undefined, 4) + "\n";
+        //s += JSON.stringify(stack.peek().defaultColumnValues, undefined, 4);
+        //WScript.Echo(s);
 
     })();
 
     // デフォルト値を正規表現で指定
     (function() {
         var match = _.trimRight(line).match(/^\/(.+)\/\s+(.+)$/);
-
         if (!match) {
             return;
         }
 
         var parse = parseColumnValues(match[2]);
-
         if (parse === null) {
             return;
         }
@@ -1904,8 +1966,7 @@ while (!srcLines.atEnd) {
         });
 
         stack.peek().defaultColumnValues = defaultValues;
-
-        //WScript.Echo(JSON.stringify(stack.peek().defaultColumnValues, undefined, 4));
+        //WScript.Echo("re default:\n" + JSON.stringify(stack.peek().defaultColumnValues, undefined, 4));
 
     })();
 
@@ -1920,7 +1981,6 @@ while (!srcLines.atEnd) {
             }
         })(e.errorMessage, e.lineObj);
     }
-
 
 }
 
