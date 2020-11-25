@@ -147,13 +147,16 @@ htmlfile.close();
 
 var includePath = [];
 
+// メインソースファイルのrootフォルダはデフォルトで最優先で探す
+includePath.push(fso.GetParentFolderName(filePath));
+
 var confFilePath = "conf.yml";
 
 confFilePath = fso.BuildPath(fso.GetParentFolderName(WScript.ScriptFullName), confFilePath);
 if (fso.FileExists(confFilePath)) {
     var conf = CL.readYAMLFile(confFilePath);
     if (!_.isUndefined(conf.includePath)) {
-        includePath = conf.includePath;
+        includePath = includePath.concat(conf.includePath);
     }
 }
 
