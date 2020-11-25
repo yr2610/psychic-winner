@@ -920,11 +920,11 @@ while (!srcLines.atEnd) {
             tableHeaders = [];
         }
         else {
-            while (/.* {2}$/.test(text)) {
+            while (/.*\s\+$/.test(text)) {
                 // 改行の次の行の行頭のスペースは無視するように
                 // 厳密にはインデントが揃ってるかちゃんとみるべきだけど、そこまでやるつもりはない
                 line = _.trimLeft(srcLines.read().line);
-                text = text.slice(0, -2) + "\n" + line;
+                text = _.trimRight(text.slice(0, -1)) + "\n" + line;
             }
 
             // １行のみ、行全体以外は対応しない
@@ -1152,14 +1152,13 @@ while (!srcLines.atEnd) {
                 columnNameIndex++;
             });
         })();
-        //printJSON(initialValues);
 
 
-        while (/.* {2}$/.test(text)) {
+        while (/.*\s\+$/.test(text)) {
             // 改行の次の行の行頭のスペースは無視するように
             // 厳密にはインデントが揃ってるかちゃんとみるべきだけど、そこまでやるつもりはない
             line = _.trimLeft(srcLines.read().line);
-            text = text.slice(0, -2) + "\n" + line;
+            text = _.trimRight(text.slice(0, -1)) + "\n" + line;
         }
 
         var commentMatch = text.trim().match(/^([\s\S]+)\s*\[\^(.+)\]$/);
@@ -1291,11 +1290,11 @@ while (!srcLines.atEnd) {
             var text = ol[2];
             var parent = stack.peek();
 
-            while (/.* {2}$/.test(text)) {
+            while (/.*\s\+$/.test(text)) {
                 // 改行の次の行の行頭のスペースは無視するように
                 // 厳密にはインデントが揃ってるかちゃんとみるべきだけど、そこまでやるつもりはない
                 line = _.trimLeft(srcLines.read().line);
-                text = text.slice(0, -2) + "\n" + line;
+                text = _.trimRight(text.slice(0, -1)) + "\n" + line;
             }
 
             if (parent.kind === kindH && parent.level === 1) {
@@ -1905,8 +1904,13 @@ while (!srcLines.atEnd) {
 
     // 初期値宣言
     (function() {
+        var match = _.trim(line).match(/^\((\(.+\))\)$/);
+        if (!match) {
+            return;
+        }
+        line = match[1];
+
         var parse = parseColumnValues(line, false);
-        //WScript.Echo(JSON.stringify(parse, undefined, 4));
         if (parse === null) {
             return;
         }
@@ -1920,19 +1924,11 @@ while (!srcLines.atEnd) {
             }
             columnNames.push(param.key);
             if (!_.isUndefined(param.value)) {
-                defaultValues[param.key] = [
-                    { value: param.value }
-                ];
+                defaultValues[param.key] = param.value;
             }
         });
         stack.peek().columnNames = columnNames;
         stack.peek().defaultColumnValues = defaultValues;
-
-        //var s = "decl:\n";
-        //s += JSON.stringify(stack.peek().columnNames, undefined, 4) + "\n";
-        //s += JSON.stringify(stack.peek().defaultColumnValues, undefined, 4);
-        //WScript.Echo(s);
-
     })();
 
     // デフォルト値を正規表現で指定
@@ -1947,26 +1943,26 @@ while (!srcLines.atEnd) {
             return;
         }
 
-        var re = new RegExp(match[1]);
-        var defaultValues = stack.peek().defaultColumnValues;
+        var reString = match[1];
+        var re = new RegExp(reString);
+        var conditionalColumnValues = stack.peek().conditionalColumnValues;
 
-        if (_.isUndefined(defaultValues)) {
-            defaultValues = {};
+        if (_.isUndefined(conditionalColumnValues)) {
+            conditionalColumnValues = [];
         }
 
         parse.columnValues.forEach(function(param) {
             // TODO: (error)key, value が両方そろってない場合エラー
-            if (_.isUndefined(defaultValues[param.key])) {
-                defaultValues[param.key] = [];
+            if (_.isUndefined(param.key) || _.isUndefined(param.value)) {
             }
-            defaultValues[param.key].push({
-                re: re,
-                value: param.value
-            });
         });
 
-        stack.peek().defaultColumnValues = defaultValues;
-        //WScript.Echo("re default:\n" + JSON.stringify(stack.peek().defaultColumnValues, undefined, 4));
+        conditionalColumnValues.push({
+            re: re,
+            columnValues: parse.columnValues
+        });
+
+        stack.peek().conditionalColumnValues = conditionalColumnValues;
 
     })();
 
@@ -2755,6 +2751,159 @@ CL.deletePropertyForAllNodes(root, "marker");
     //WScript.Echo(endTime - startTime);
 })();
 
+try {
+
+// initial values のデフォルト値の処理
+(function() {
+    // stack
+    // すべて番兵を入れておく
+    var columnNames = [{value: []}];
+    var defaultValues = [{value: {}}];
+    var conditionalColumnValues = [{value: []}];
+    forAllNodes_Recurse(root, null, -1,
+        function(node, parent, index) {
+            if (node.children.length !== 0) {
+                if (!_.isUndefined(node.columnNames)) {
+                    columnNames.push({
+                        node: node,
+                        value: node.columnNames
+                    });
+                }
+
+                if (!_.isUndefined(node.defaultColumnValues)) {
+                    // 1個親に自分を上書き追加していく感じで
+                    var value = _.clone(_.last(defaultValues).value);
+                    // node.defaultColumnValues を value に上書き
+                    _.forEach(node.defaultColumnValues, function(val, key) {
+                        value[key] = val;
+                    });
+                    defaultValues.push({
+                        node: node,
+                        value: value
+                    });
+                }
+
+                function keyValuePairToObject(conditionalColumnValues) {
+                    var result = [];
+
+                    conditionalColumnValues.forEach(function(conditionalColumnValue) {
+                        var re = conditionalColumnValue.re;
+                        var columnValuesData = conditionalColumnValue.columnValues;
+                        var columnValues = {};
+                        var currentColumnNames = _.last(columnNames).value;
+    
+                        columnValuesData.forEach(function(element, index) {
+                            if (_.isUndefined(element.key)) {
+                                if (index >= currentColumnNames.length) {
+                                    var errorMessage = "初期値が列名リストの範囲外に設定されています。";
+                                    throw new ColumnValueError(errorMessage, lineObj);
+                                }
+                                var key = currentColumnNames[index]
+                                columnValues[key] = element.value;
+                            }
+                            else {
+                                columnValues[element.key] = element.value;
+                            }
+                        });
+    
+                        result.push({
+                            re: re,
+                            columnValues: columnValues
+                        });
+                    });
+
+                    return result;
+                }
+
+                if (!_.isUndefined(node.conditionalColumnValues)) {
+                    // 1個親の先頭に自分を追加していく感じで
+                    var value = node.conditionalColumnValues.concat(_.last(conditionalColumnValues).value);
+                    conditionalColumnValues.push({
+                        node: node,
+                        value: keyValuePairToObject(value)
+                    });
+                }
+
+                // XXX: 本来はエラーとすべきだけど、一旦削除するようにしておく
+                // XXX: 仕様変更するかも
+                if (!_.isUndefined(node.initialValues)) {
+                    delete node.initialValues;
+                }
+
+            }
+            // leaf の場合
+            else {
+                (function() {
+                    // 指定がなくてもデフォルト値は処理する
+                    if (_.isUndefined(node.initialValues)) {
+                        node.initialValues = {};                    //    return;
+                    }
+
+                    _.last(conditionalColumnValues).value.forEach(function(elem, index) {
+                        var columnValues = {};
+                        _.forEach(elem.columnValues, function(value, key) {
+                            if (!(key in node.initialValues)) {
+                                columnValues[key] = value;
+                            }
+                        });
+                        if (_.isEmpty(columnValues)) {
+                            return;
+                        }
+                        if (elem.re.test(node.text)) {
+                            _.forEach(columnValues, function(value, key) {
+                                node.initialValues[key] = value;
+                            });
+                        }
+                    });
+
+                    _.forEach(_.last(defaultValues).value, function(value, key) {
+                        if (!(key in node.initialValues)) {
+                            node.initialValues[key] = value;
+                        }
+                    });
+
+                    // 空文字列なら削除
+                    _.keys(node.initialValues).forEach(function(key) {
+                        if (node.initialValues[key] === "") {
+                            delete node.initialValues[key];
+                        }
+                    });
+
+                    if (_.isEmpty(node.initialValues)) {
+                        delete node.initialValues;
+                    }
+
+                })();
+            }
+        },
+        function(node, parent, index) {
+            function popSameNode(stack, node) {
+                if (_.isEmpty(stack)) {
+                    return;
+                }
+                if (_.last(stack).node === node) {
+                    stack.pop();
+                }
+            }
+            popSameNode(conditionalColumnValues, node);
+            popSameNode(columnNames, node);
+            popSameNode(defaultValues, node);
+        }
+    );
+})();
+
+}
+catch (e) {
+    (function (errorMessage, lineObj) {
+        if (_.isUndefined(lineObj)) {
+            Error(errorMessage);
+        }
+        else {
+            Error(errorMessage, lineObj.filePath, lineObj.lineNum);
+        }
+    })(e.errorMessage, e.lineObj);
+}
+
 function forAllLeaves_Recurse(node, fun) {
     if (node.children.length === 0) {
         if (fun(node)) {
@@ -2808,6 +2957,7 @@ deleteNullProperty_Recurse(root);
 CL.deletePropertyForAllNodes(root, "uidList");
 CL.deletePropertyForAllNodes(root, "columnNames");
 CL.deletePropertyForAllNodes(root, "defaultColumnValues");
+CL.deletePropertyForAllNodes(root, "conditionalColumnValues");
 CL.deletePropertyForAllNodes(root, "lineObj");
 CL.deletePropertyForAllNodes(root, "indent");
 CL.deletePropertyForAllNodes(root, "parent");
