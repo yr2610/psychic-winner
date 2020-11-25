@@ -421,23 +421,37 @@ excel.StatusBar = "シート作成中: " + indexSheet.Name;
 
 //excel.ScreenUpdating = true;
 {
-    // １文字目が大文字の変数はシート内の同名（$FOO$ 形式）のセルに値を埋め込む
-    for (var key in root.variables)
-    {
-        // １文字目が大文字、または _ で始まり、その次が大文字じゃない
-        if (!/^_?[A-Z].*/.test(key))
-        {
-            continue;
+    // シート内の同名セルに値を埋め込む
+    // 埋め込み先（指定した名前のセル）がない場合は特にエラーは出さない（無視する）
+    (function() {
+        var usedRange = indexSheet.UsedRange;
+        var width = usedRange.Columns.Count;
+        var height = usedRange.Rows.Count;
+        var values = usedRange.Value.toArray();
+        // 「1文字目が大文字、または _ 」みたいな制限は設けないでおく
+        var re = /^\{{([A-Za-z_]\w*)}}$/;
+        for (var x = 1, i = 0; x <= width; x++) {
+            for (var y = 1; y <= height; y++, i++) {
+                var text = values[i];
+                if (!text) {
+                    continue;
+                }
+                if (!re.test(text)) {
+                    continue;
+                }
+                var cell = usedRange.Cells(y, x);
+                var key = text.match(re)[1];
+                if (key in root.variables) {
+                    cell.Value = root.variables[key];
+                }
+                else {
+                    // export の空セルの出力が null なので合わせておく（差分検出処理できるように）
+                    cell.Value = null;
+                    //cell.Value = void 0;
+                }
+            }
         }
-        // セルが見つからない
-        var cell = indexSheet.Cells.Find("$" + key + "$", sheet.Cells(1, 1), Excel.xlValues, Excel.xlWhole, Excel.xlByRows, Excel.xlNext, true);
-        if (!cell)
-        {
-            continue;
-        }
-
-        cell.Value = root.variables[key];
-    }
+    })();
 
     var templateName = templateSheet.Name;
 
