@@ -393,7 +393,7 @@ function preProcess_Recurse(filePath, lines, filePaths, pathStack) {
             var path = findIncludeFile(includeFile);
 
             if (!path) {
-                var errorMessage = "include ファイル\n" + includePath + "\nが存在しません";
+                var errorMessage = "include ファイル\n" + includeFile + "\nが存在しません";
 
                 Error(errorMessage, filePath, lineArray.index);
             }
