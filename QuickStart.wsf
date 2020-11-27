@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<package>
+  <job>
+    <script language="JavaScript">
+//<![CDATA[
+
+//  フォルダ選択ダイアログボックスのオプション
+var BIF_NON                 =   0;  // 全てのオプションがない状態
+var BIF_EDITBOX             =  16;  // フォルダ名を指定するテキストボックスを表示
+var BIF_NONEWFOLDERBUTTON   = 512;  // 新しいフォルダボタンを非表示にする
+
+//  Shell関連の操作を提供するオブジェクトその2を取得
+var sh = new ActiveXObject( "Shell.Application" );
+
+var shell = new ActiveXObject("WScript.Shell");
+
+//  ファイル関連の操作を提供するオブジェクトを取得
+var fs = new ActiveXObject( "Scripting.FileSystemObject" );
+
+function clip_get(){
+    var clip = WScript.CreateObject("htmlfile").parentWindow.clipboardData;
+    return clip.getData("text");
+}
+function file_exists(file){
+    //var fs = WScript.CreateObject("Scripting.FileSystemObject");
+    return fs.FileExists(file);
+}
+function dir_exists(dir){
+    //var fs = WScript.CreateObject("Scripting.FileSystemObject");
+    return fs.FolderExists(dir);
+}
+function exit(){
+    WScript.Quit()
+}
+
+// フォルダーのパスらしきものをクリップボードから取得
+function getFolderPathFromClipboard() {
+    var path = clip_get();
+    if (path === null) {
+        return null;
+    }
+    // パスは必ず " でくくられているっぽいので削除
+    if (path.charAt(0) == '"') {
+        path = path.slice(1, -1);
+    }
+    if (dir_exists(path)) {
+        return path;
+    }
+    if (file_exists(path)) {
+        return fs.GetParentFolderName(path);
+    }
+    return null;
+}
+
+//WScript.Echo(clip_get());
+
+//  親ウインドウのハンドルを設定(基本的にこれは初期値「0」)
+var hWnd = 0;
+
+//  ダイアログボックスに表示するタイトルを設定
+var title = "作業フォルダを選択";
+
+//  オプションを設定
+var op = BIF_EDITBOX;
+
+//  初期表示のディレクトリパスを設定
+var initPath = getFolderPathFromClipboard();
+//initPath = shell.specialfolders(getFolderPathFromClipboard());
+//WScript.Echo(initPath);
+
+//  フォルダ選択ダイアログボックスを表示
+var folderDialog = sh.BrowseForFolder( hWnd, title, op, initPath );
+
+//  キャンセルボタンを押されたとき
+if ( folderDialog  ==  null ) {
+    exit();
+}
+
+var folderPath = folderDialog.Items().Item().Path;
+
+//WScript.Echo(folderPath);
+
+//  Folderオブジェクトを取得
+var folder = fs.GetFolder(folderPath);
+
+if (folder.Files.Count > 0) {
+    WScript.Echo("空のフォルダを指定してください。");
+    exit();
+}
+
+// .svn 以外のフォルダが存在する場合はNG
+if (folder.Subfolders.Count > 0) {
+    //  EnumeratorオブジェクトにFolderオブジェクトに
+    //  含まれている全てのFolderオブジェクトを格納
+    var em = new Enumerator( folder.SubFolders );
+
+    //  格納したFileオブジェクトのファイル名を全て表示
+    for ( em.moveFirst(); !em.atEnd(); em.moveNext() ) {
+        if (em.item().Name != ".svn") {
+            WScript.Echo("空のフォルダを指定してください。");
+            WScript.Echo(em.item().Name);
+            exit();
+        }
+    }
+}
+
+var thisFolder = fs.getParentFolderName(WScript.ScriptFullName);
+
+//  ショートカットファイル作成
+var lnkfile = shell.CreateShortcut(fs.BuildPath(folderPath, "Make.lnk"));
+
+//  ショートカットの参照先パスを設定
+//  (先頭に「file:/」を付加するとアイコンが自動設定される)
+lnkfile.TargetPath = fs.BuildPath(thisFolder, "Make.wsf");
+lnkfile.Arguments = '"' + fs.BuildPath(folderPath, "main.txt") + '"';
+lnkfile.Save();
+
+fs.CopyFolder(".\\quickstart", folderPath);
+
+var wsfFiles = [
+    "Commit",
+    "Update",
+    "Export",
+    "Import",
+    "Finalize"
+];
+
+var buildFolder = fs.BuildPath(folderPath, "build");
+fs.CreateFolder(buildFolder);
+for (var i = 0; i < wsfFiles.length; i++) {
+    var wsfName = wsfFiles[i];
+    var lnkfile = shell.CreateShortcut(fs.BuildPath(buildFolder, wsfName + ".lnk"));
+    lnkfile.TargetPath = fs.BuildPath(thisFolder, wsfName + ".wsf");
+    lnkfile.Save();
+}
+
+
+//  オブジェクトを解放
+fs = null;
+shell = null;
+sh = null;
+
+//]]>
+    </script>
+  </job>
+</package>
