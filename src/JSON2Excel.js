@@ -31,7 +31,7 @@ function parseIndexSheet(indexSheet, checkSheet, root) {
     // 現状は、「このシートはそのままで json だけ更新される」という状況はないけど、将来必要になりそうな雰囲気がないこともないので、一応対応
     data.variables = {};
     for (var key in root.variables) {
-        var cells = findAllValuesInRange(indexSheet.Cells, "$" + key + "$");
+        var cells = findAllValuesInRange(indexSheet.Cells, "{{" + key + "}}");
 
         // セルが見つからない
         if (!cells) {
