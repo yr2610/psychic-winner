@@ -923,11 +923,12 @@ while (!srcLines.atEnd) {
             tableHeaders = [];
         }
         else {
-            while (/.*\s\+$/.test(text)) {
+            while (/.*\s\+\s*$/.test(text)) {
                 // 改行の次の行の行頭のスペースは無視するように
                 // 厳密にはインデントが揃ってるかちゃんとみるべきだけど、そこまでやるつもりはない
                 line = _.trimLeft(srcLines.read().line);
-                text = _.trimRight(text.slice(0, -1)) + "\n" + line;
+                text = _.trimRight(_.trimRight(text).slice(0, -1));
+                text += "\n" + line;
             }
 
             // １行のみ、行全体以外は対応しない
@@ -937,6 +938,8 @@ while (!srcLines.atEnd) {
                 url = link[2].trim();
             }
         }
+
+        text = text.trim();
 
         if (text.length > 31) {
             var errorMessage = "シート名が31文字を超えています";
@@ -1157,11 +1160,12 @@ while (!srcLines.atEnd) {
         })();
 
 
-        while (/.*\s\+$/.test(text)) {
+        while (/.*\s\+\s*$/.test(text)) {
             // 改行の次の行の行頭のスペースは無視するように
             // 厳密にはインデントが揃ってるかちゃんとみるべきだけど、そこまでやるつもりはない
             line = _.trimLeft(srcLines.read().line);
-            text = _.trimRight(text.slice(0, -1)) + "\n" + line;
+            text = _.trimRight(_.trimRight(text).slice(0, -1));
+            text += "\n" + line;
         }
 
         var commentMatch = text.trim().match(/^([\s\S]+)\s*\[\^(.+)\]$/);
@@ -1198,6 +1202,8 @@ while (!srcLines.atEnd) {
             text = link[1].trim();
             url = link[2].trim();
         }
+
+        text = text.trim();
 
         var item = {
             kind: kindUL,
@@ -1293,11 +1299,12 @@ while (!srcLines.atEnd) {
             var text = ol[2];
             var parent = stack.peek();
 
-            while (/.*\s\+$/.test(text)) {
+            while (/.*\s\+\s*$/.test(text)) {
                 // 改行の次の行の行頭のスペースは無視するように
                 // 厳密にはインデントが揃ってるかちゃんとみるべきだけど、そこまでやるつもりはない
                 line = _.trimLeft(srcLines.read().line);
-                text = _.trimRight(text.slice(0, -1)) + "\n" + line;
+                text = _.trimRight(_.trimRight(text).slice(0, -1));
+                text += "\n" + line;
             }
 
             if (parent.kind === kindH && parent.level === 1) {
