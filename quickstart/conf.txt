@@ -1,8 +1,8 @@
 // 出力ファイル（Excel）名
 // 現状ファイル名に明確なルールはないようなので
-//【yymmdd更新】[型式]-[UPDATE日]
+//【yymmdd更新】[プロジェクトID]_[UPDATE日]
 // のようにしています
-[outputFilename]: 【yymmdd更新】XYZ-20200101
+[outputFilename]: 【yymmdd更新】XYZ_20200101
 
 // index シートのシート名を変更したい場合
 //[indexSheetname]: 表紙

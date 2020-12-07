@@ -3,14 +3,19 @@
 
 // ==== 確認項目 ====
 
+// ひな形
+<<[template.txt]
+
+// ==== サンプル ====
+
 // 基本機能のサンプル
-<<[basic.txt]
+<<[examples/basic.txt]
 
 // 階層構造のサンプル
-<<[layer.txt]
+<<[examples/layer.txt]
 
 // グループのサンプル
-<<[group.txt]
+<<[examples/group.txt]
 
-// テンプレート機能のサンプル
-<<[template.txt]
+// function（テンプレート機能）のサンプル
+<<[examples/function.txt]
