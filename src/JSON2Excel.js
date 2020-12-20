@@ -3,6 +3,10 @@
     WScript.Quit();
 }
 
+function printJSON(json) {
+    WScript.Echo(JSON.stringify(json, undefined, 4));
+}
+
 function findAllValuesInRange(range, targetValue)
 {
     var cell = range.Find(targetValue, range.Cells(1, 1), Excel.xlValues, Excel.xlWhole, Excel.xlByRows, Excel.xlNext, true, true);
@@ -258,8 +262,9 @@ var sJSON = file.Readall();
 file.Close();
 /**/
 
-var root = JSON.parse(sJSON);
+var jsonFolderPath = fso.getParentFolderName(filePath);
 
+var root = JSON.parse(sJSON);
 
 var kindH = "H";
 var kindUL = "UL";
@@ -313,11 +318,6 @@ if (root.variables.indexSheetname) {
     }
 }
 
-/**
-// デフォルトではソーステキストと同じ場所にある checklist_template.xlsx という名前のExcelをテンプレートとして使うようにしておく
-var defaultTemplateName = "checklist_template.xlsx";
-var templatesDirectory = fso.GetParentFolderName(filePath);
-/*/
 // デフォルトではツール置き場の templates/default.xlsx という名前のExcelをテンプレートとして使うようにしておく
 var defaultTemplateName = "default.xlsx";
 var templateName = root.variables.templateFilename ? root.variables.templateFilename : defaultTemplateName;
@@ -331,11 +331,10 @@ if (fso.FolderExists(localTemplatesDirectory)) {
         templatePath = localTemplatePath;
     }
 }
-/**/
 
 // 出力（SaveAs）ファイル名を先に確認
 var dstFilename = root.variables.outputFilename ? root.variables.outputFilename : fso.GetBaseName(filePath);
-dstFilename += "-" + CL.yyyymmddhhmmss(new Date()).slice(2, -2);
+dstFilename += "_" + CL.yyyymmddhhmmss(new Date()).slice(2);
 dstFilename += "." + fso.GetExtensionName(templatePath);
 var dstFolderName = fso.BuildPath(fso.GetParentFolderName(filePath), "build");
 CL.createFolder(dstFolderName);
@@ -350,11 +349,34 @@ catch (e) {
     Error("出力ファイル名（ " + root.variables.outputFilename + " ）が不正です。");
 }
 
+// projectname 変数があればそれ、なければ json ファイル名
+var cacheBasename = (root.variables.projectname) ?
+    root.variables.projectname :
+    fso.GetBaseName(filePath);
+cacheBasename += "_cache";
+// cache xlsx のファイル名
+var cacheBasePath = fso.BuildPath(jsonFolderPath, cacheBasename);
+var cacheFilePath = cacheBasePath + ".xlsx";
+
+// cache がない or template.xlsx よりタイムスタンプが古いなら template.xlsx を cache.xlsx にコピー
+function shouldCopyTemplateAsCache(cacheFilePath, templatePath) {
+    if (!fso.FileExists(cacheFilePath)) {
+        return true;
+    }
+    var cacheFile = fso.GetFile(cacheFilePath);
+    var templateFile = fso.GetFile(templatePath);
+
+    return (templateFile.DateLastModified > cacheFile.DateLastModified);
+}
+if (shouldCopyTemplateAsCache(cacheFilePath, templatePath)) {
+    fso.CopyFile(templatePath, cacheFilePath);
+}
+
 initializeExcel();
 excel.Visible = true;
 excel.ScreenUpdating = false;
 
-var book = openBookReadOnly(templatePath);
+var book = openBook(cacheFilePath, false);
 
 var srcTextLastModifiedDate = (function(){
     var maxTime = 0;
@@ -383,41 +405,151 @@ if (indexNode.variables.indexSheetname) {
     indexSheet.Name = indexNode.variables.indexSheetname;
 }
 
-var indexSheetData = parseIndexSheet(indexSheet, templateSheet, root);
-var checkSheetData = parseCheckSheet(templateSheet);
-var templateData = {
-    indexSheet: indexSheetData,
-    checkSheet: checkSheetData
-};
+var templateJsonSheetName = "template.json";
+var templateData;
+var indexSheetData;
+var checkSheetData;
+var templateJsonSheet = findSheetByName(book, templateJsonSheetName);
+if (templateJsonSheet) {
+    templateData = CL.ReadJSONFromSheet(templateJsonSheet);
+    indexSheetData = templateData.indexSheet;
+    checkSheetData = templateData.checkSheet;
+}
+else {
+    indexSheetData = parseIndexSheet(indexSheet, templateSheet, root);
+    checkSheetData = parseCheckSheet(templateSheet);
+    templateData = {
+        indexSheet: indexSheetData,
+        checkSheet: checkSheetData
+    };
+    
+    // 情報抜き出したらそれに基づいてセルの内容削除
+    clearMarksInCheckSheet(templateSheet, checkSheetData);
 
-// 情報抜き出したらそれに基づいてセルの内容削除
-clearMarksInCheckSheet(templateSheet, checkSheetData);
+    // シートに保存しておく
+    templateJsonSheet = addJSONSheet(templateData, templateJsonSheetName);
+}
 
-for (var i = 0; i < root.children.length; i++)
-{
+// hash 情報取得
+var sheetHashSheetName = "sheetHash.json"
+var sheetHashes = {};
+var sheetHashSheet = findSheetByName(book, sheetHashSheetName);
+if (sheetHashSheet) {
+    sheetHashes = CL.ReadJSONFromSheet(sheetHashSheet);
+}
+else {
+    sheetHashSheet = book.Worksheets.Add();
+    sheetHashSheet.Name = sheetHashSheetName;
+}
+
+function getSheetHash(nodeH1) {
+    var lengthThreshold = 4096;
+    var s = JSON.stringify(nodeH1);
+
+    // hash計算短縮のため、ある程度長い場合は圧縮する
+    // 長さはテキトー
+    //var startTime = performance.now();
+    if (s.length >= lengthThreshold) {
+        var compressor = LZString.compressToEncodedURIComponent;
+        var compressed = compressor(s);
+        s = compressed;
+    }
+    var shaObj = new jsSHA("SHA-256", "TEXT", { encoding: "UTF8" });
+    shaObj.update(s);
+    var hash = shaObj.getHash("HEX");
+    //var endTime = performance.now();
+    //WScript.Echo((endTime - startTime).toString());
+
+    return hash;
+}
+
+for (var i = 0; i < root.children.length; i++) {
     var nodeH1 = root.children[i];
     var name = nodeH1.text;
+    excel.ScreenUpdating = true;
     excel.StatusBar = "シート作成中: " + name;
+    excel.ScreenUpdating = false;
 
-    if (findSheetByName(book, name))
-    {
-        // TODO: 上書き生成する(OK)か、今のを残す(Cancel)か確認する
-        WScript.Echo("すでにシート [" + name + "] は存在しているためスキップします");
-        continue;
+    var hash = getSheetHash(nodeH1);
+
+    if (nodeH1.id in sheetHashes) {
+        if (sheetHashes[nodeH1.id] == hash) {
+            continue;
+        }
+        else {
+            // シート削除
+            var sheet = findSheetByName(book, "#" + nodeH1.id);
+            excel.DisplayAlerts = false;
+            sheet.Delete();
+            excel.DisplayAlerts = true;
+        }
     }
+
+    sheetHashes[nodeH1.id] = hash;
+
+    //if (findSheetByName(book, name))
+    //{
+    //    // TODO: 上書き生成する(OK)か、今のを残す(Cancel)か確認する
+    //    WScript.Echo("すでにシート [" + name + "] は存在しているためスキップします");
+    //    continue;
+    //}
 
     // コピー元が非表示だとアクセスが面倒くさいので、先頭にコピーして表示させてから末尾に移動
     templateSheet.Copy(book.Worksheets(1));
     var sheet = book.Worksheets(1);
     sheet.Visible = true;
-    sheet.Name = name;
-    sheet.Move(null, book.Worksheets(book.Worksheets.Count));
+    sheet.Name = "#" + nodeH1.id;
+    //sheet.Move(null, book.Worksheets(book.Worksheets.Count));
 
     render(sheet, nodeH1, checkSheetData);
 }
 
+CL.writeJSONToSheet(sheetHashes, sheetHashSheet);
 
+// cache にシート名を id で書き出して save
+book.Save();
+
+// TODO: シート名をすべて変更し不要なシートを削除し、 index シートをつけて、最後に save as 出力ファイル名
+// シート名をすべて変更し不要なシートを削除
+var lastSheet = book.Worksheets(book.Worksheets.Count);
+for (var i = 0; i < root.children.length; i++) {
+    var nodeH1 = root.children[i];
+    var name = nodeH1.text;
+    var sheet = findSheetByName(book, "#" + nodeH1.id);
+    sheet.Name = name;
+
+    // 末尾に移動
+    sheet.Move(null, lastSheet);
+    lastSheet = sheet;
+
+    // sheetHashes はもう使わないので、削除するシートを調べるために利用
+    // ここで delete して残ったものが削除対象のシートになる
+    delete sheetHashes[nodeH1.id];
+}
+
+excel.DisplayAlerts = false;
+// 残ったシートを削除
+var SheetIdsToDelete = _.keys(sheetHashes);
+for (var i = 0; i < SheetIdsToDelete.length; i++) {
+    var id = SheetIdsToDelete[i];
+    var sheet = findSheetByName(book, "#" + id);
+    sheet.Delete();
+}
+// hash情報シートを削除
+sheetHashSheet.Delete();
+excel.DisplayAlerts = true;
+
+function getSheetNameListString(book) {
+    var s = "";
+    for (var i = 0, n = book.Worksheets.Count; i < n; i++) {
+        s += book.Worksheets(1 + i).Name + "\n";
+    }
+    return s;
+}
+
+excel.ScreenUpdating = true;
 excel.StatusBar = "シート作成中: " + indexSheet.Name;
+excel.ScreenUpdating = false;
 
 //excel.ScreenUpdating = true;
 {
@@ -549,7 +681,7 @@ excel.StatusBar = "シート作成中: " + indexSheet.Name;
                             var sheetNameCell = cell.Offset(i, 0);
                             var targetSheet = findSheetByName(book, afterName[i].uq);
                             // XXX: [H1] のアドレスを保存しておいて、そこを見るように
-                            var cellH1 = targetSheet.Cells.Find(afterName[i].uq, sheet.Cells(1, 1), Excel.xlValues, Excel.xlWhole, Excel.xlByRows, Excel.xlNext, true);
+                            var cellH1 = targetSheet.Cells.Find(afterName[i].uq, targetSheet.Cells(1, 1), Excel.xlValues, Excel.xlWhole, Excel.xlByRows, Excel.xlNext, true);
                             // XXX: とりあえず size, bold だけ…
                             var fontH1Size = cellH1.Font.Size;
                             var fontH1Bold = cellH1.Font.Bold;
@@ -600,7 +732,9 @@ excel.StatusBar = "シート作成中: " + indexSheet.Name;
 
 
 function addJSONSheet(object, sheetName) {
+    excel.ScreenUpdating = true;
     excel.StatusBar = sheetName + " 出力中";
+    excel.ScreenUpdating = false;
     var sJSON = JSON.stringify(object, undefined, 4);
     var jsonSheet = book.Worksheets.Add();
     jsonSheet.Name = sheetName;
@@ -636,13 +770,12 @@ function addJSONSheet(object, sheetName) {
     }
     jsonSheet.Cells(1 + row, 1).Value = sJSON;
     /**/
+
+    return jsonSheet;
 }
 
 // tree の状態を残しておく
 addJSONSheet(root, "JSON");
-
-// 元のtemplateのexcelの情報も残しておく
-addJSONSheet(templateData, "template.json");
 
 
 indexSheet.Select();
@@ -873,7 +1006,7 @@ function render(sheet, nodeH1, checkSheetData)
     sheet.Select();
 
     var cellH1 = sheet.Range(checkSheetData.h1.address);
-    cellH1.Value = sheet.Name;
+    cellH1.Value = nodeH1.text;
 
     var cellUL = sheet.Cells(checkSheetData.table.row, checkSheetData.table.ul.column);
 
