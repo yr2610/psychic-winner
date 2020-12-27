@@ -478,7 +478,7 @@ for (var i = 0; i < root.children.length; i++) {
         }
         else {
             // シート削除
-            var sheet = findSheetByName(book, "#" + nodeH1.id);
+            var sheet = book.Worksheets("#" + nodeH1.id);
             excel.DisplayAlerts = false;
             sheet.Delete();
             excel.DisplayAlerts = true;
@@ -503,6 +503,10 @@ for (var i = 0; i < root.children.length; i++) {
 
     render(sheet, nodeH1, checkSheetData);
 }
+
+excel.ScreenUpdating = true;
+excel.StatusBar = false;
+excel.ScreenUpdating = false;
 
 CL.writeJSONToSheet(sheetHashes, sheetHashSheet);
 
@@ -530,11 +534,10 @@ for (var i = 0; i < root.children.length; i++) {
 excel.DisplayAlerts = false;
 // 残ったシートを削除
 var SheetIdsToDelete = _.keys(sheetHashes);
-for (var i = 0; i < SheetIdsToDelete.length; i++) {
-    var id = SheetIdsToDelete[i];
-    var sheet = findSheetByName(book, "#" + id);
+SheetIdsToDelete.forEach(function(id) {
+    var sheet = book.Worksheets("#" + id);
     sheet.Delete();
-}
+});
 // hash情報シートを削除
 sheetHashSheet.Delete();
 excel.DisplayAlerts = true;
