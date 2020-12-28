@@ -349,9 +349,9 @@ catch (e) {
     Error("出力ファイル名（ " + root.variables.outputFilename + " ）が不正です。");
 }
 
-// projectname 変数があればそれ、なければ json ファイル名
-var cacheBasename = (root.variables.projectname) ?
-    root.variables.projectname :
+// project 変数があればそれ、なければ json ファイル名
+var cacheBasename = (root.variables.project) ?
+    root.variables.project :
     fso.GetBaseName(filePath);
 cacheBasename += "_cache";
 // cache xlsx のファイル名
