@@ -38,8 +38,8 @@ while (parserExec.Status == 0) {
      WScript.Sleep(100);
      cnt++;
 
-    //  10秒経過したら終了
-    if (cnt  >=  100) {
+    //  30秒経過したら終了
+    if (cnt  >=  300) {
         parserExec.Terminate();
         Error("parser で問題発生（タイムアウト）");
     }
