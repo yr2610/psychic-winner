@@ -532,14 +532,17 @@ for (var i = 0; i < root.children.length; i++) {
 }
 
 excel.DisplayAlerts = false;
+
 // 残ったシートを削除
-var SheetIdsToDelete = _.keys(sheetHashes);
-SheetIdsToDelete.forEach(function(id) {
-    var sheet = book.Worksheets("#" + id);
-    sheet.Delete();
+var sheetsToDelete = _.transform(_.keys(sheetHashes), function(result, n) {
+    result.push("#" + n);
 });
+
 // hash情報シートを削除
-sheetHashSheet.Delete();
+sheetsToDelete.push(sheetHashSheet.Name);
+
+book.Worksheets(jsArray1dToSafeArray1d(sheetsToDelete)).Delete();
+
 excel.DisplayAlerts = true;
 
 function getSheetNameListString(book) {
