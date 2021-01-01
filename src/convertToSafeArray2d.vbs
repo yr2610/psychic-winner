@@ -1,4 +1,30 @@
-﻿Function jsArray2dToSafeArray2d_old(jsArray)
+﻿Function jsArray1dToSafeArray1d(jsArray)
+    Dim len : len = jsArray.length
+    Dim result
+    Dim i
+    Dim t
+    ReDim result(len - 1)
+
+    i = 0
+    For Each t In jsArray
+        result(i) = t
+        i = i + 1
+        If i >= len Then
+            Exit For
+        End If
+    Next
+
+    'For i = 0 to l1
+    '    On Error Resume Next
+    '    result(i) = Eval("jsArray.[" & t & "]")
+    '    t = t + 1
+    '    On Error Goto 0
+    'Next
+
+    jsArray1dToSafeArray1d = result
+End Function
+
+Function jsArray2dToSafeArray2d_old(jsArray)
     Dim l1, l2, result
     Dim i, j
     l1 = jsArray.length - 1
