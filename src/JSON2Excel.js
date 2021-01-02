@@ -442,6 +442,91 @@ else {
     sheetHashSheet.Name = sheetHashSheetName;
 }
 
+// certutil 利用
+// id が key の object を返す
+function getSheetsHash(sheets) {
+    var tempDir = fso.GetSpecialFolder(2);
+    var shellExec = {};
+    var result = {};
+
+    for (var i = 0; i < sheets.length; i++) {
+        var nodeH1 = sheets[i];
+        var s = JSON.stringify(nodeH1);
+        var id = nodeH1.id;
+
+        var tempFile = fso.GetTempName();
+        var filePath = fso.BuildPath(tempDir, tempFile);
+
+        shellExec[id] = {};
+
+        CL.writeTextFileUTF8(s, filePath);
+        shellExec[id].filePath = filePath;
+
+        var command = "certUtil -hashfile " + filePath + " SHA256";
+        shellExec[id].exec = shell.Exec(command);
+    }
+
+    for (cnt = 0; ; cnt++) {
+        // foreach の中で delete するとダメなので後でまとめて delete
+        var idToDelete = [];
+        _.forEach(shellExec, function(n, key) {
+            var exec = n.exec;
+            if (exec.Status == 0) {
+                return;
+            }
+
+            fso.DeleteFile(n.filePath, true);
+
+            if (exec.ExitCode != 0) {
+                var message;
+
+                _.forEach(shellExec, function(n, key) {
+                    if (fso.FileExists(n.filePath)) {
+                        fso.DeleteFile(n.filePath, true);
+                    }
+                });
+                
+                if (!exec.StdErr.AtEndOfStream) {
+                    message = parserExec.StdErr.ReadAll();
+                }
+                else {
+                    message = "certUtil でエラーが発生しました";
+                }
+            
+                Error(message);
+            }
+            
+            exec.StdOut.SkipLine();
+            result[key] = exec.StdOut.ReadLine();
+
+            idToDelete.push(key);
+        });
+
+        idToDelete.forEach(function(id) {
+            delete shellExec[id];
+        });
+ 
+        if (_.isEmpty(shellExec)) {
+            break;
+        }
+
+        //  5秒経過したら終了
+        if (cnt >= 50) {
+            _.forEach(shellExec, function(n, key) {
+                n.exec.Terminate();
+                if (fso.FileExists(n.filePath)) {
+                    fso.DeleteFile(n.filePath, true);
+                }
+            });
+            Error("certUtil で問題発生（タイムアウト）");
+        }
+ 
+        WScript.Sleep(100);
+    }
+    
+    return result;
+}
+
 function getSheetHash(nodeH1) {
     var lengthThreshold = 4096;
     var s = JSON.stringify(nodeH1);
@@ -463,6 +548,34 @@ function getSheetHash(nodeH1) {
     return hash;
 }
 
+var newSheetHashes = getSheetsHash(root.children);
+
+// 更新が必要なシートを削除
+(function() {
+    var sheetsToDelete = [];
+
+    _.forEach(root.children, function(nodeH1) {
+        var id = nodeH1.id;
+        if (id in sheetHashes && sheetHashes[id] != newSheetHashes[id]) {
+            sheetsToDelete.push("#" + id);
+        }
+    });
+
+    if (_.isEmpty(sheetsToDelete)) {
+        return;
+    }
+
+    excel.DisplayAlerts = false;
+    book.Worksheets(jsArray1dToSafeArray1d(sheetsToDelete)).Delete();
+    excel.DisplayAlerts = true;
+})();
+
+var lastSheet = book.Worksheets(book.Worksheets.Count);
+// 非表示じゃない最後のシート
+while (!lastSheet.Visible) {
+    lastSheet = lastSheet.Previous;
+}
+
 for (var i = 0; i < root.children.length; i++) {
     var nodeH1 = root.children[i];
     var name = nodeH1.text;
@@ -470,36 +583,23 @@ for (var i = 0; i < root.children.length; i++) {
     excel.StatusBar = "シート作成中: " + name;
     excel.ScreenUpdating = false;
 
-    var hash = getSheetHash(nodeH1);
+    var newHash = newSheetHashes[nodeH1.id];
 
-    if (nodeH1.id in sheetHashes) {
-        if (sheetHashes[nodeH1.id] == hash) {
-            continue;
-        }
-        else {
-            // シート削除
-            var sheet = book.Worksheets("#" + nodeH1.id);
-            excel.DisplayAlerts = false;
-            sheet.Delete();
-            excel.DisplayAlerts = true;
-        }
+    if (nodeH1.id in sheetHashes && sheetHashes[nodeH1.id] == newHash) {
+        // 末尾に移動
+        var sheet = book.Worksheets("#" + nodeH1.id);
+        sheet.Move(null, lastSheet);
+        lastSheet = sheet;
+        continue;
     }
 
-    sheetHashes[nodeH1.id] = hash;
+    sheetHashes[nodeH1.id] = newHash;
 
-    //if (findSheetByName(book, name))
-    //{
-    //    // TODO: 上書き生成する(OK)か、今のを残す(Cancel)か確認する
-    //    WScript.Echo("すでにシート [" + name + "] は存在しているためスキップします");
-    //    continue;
-    //}
-
-    // コピー元が非表示だとアクセスが面倒くさいので、先頭にコピーして表示させてから末尾に移動
-    templateSheet.Copy(book.Worksheets(1));
-    var sheet = book.Worksheets(1);
-    sheet.Visible = true;
+    templateSheet.Copy(null, lastSheet);
+    lastSheet = lastSheet.Next;
+    var sheet = lastSheet;
     sheet.Name = "#" + nodeH1.id;
-    //sheet.Move(null, book.Worksheets(book.Worksheets.Count));
+    sheet.Visible = true;
 
     render(sheet, nodeH1, checkSheetData);
 }
@@ -513,37 +613,36 @@ CL.writeJSONToSheet(sheetHashes, sheetHashSheet);
 // cache にシート名を id で書き出して save
 book.Save();
 
-// TODO: シート名をすべて変更し不要なシートを削除し、 index シートをつけて、最後に save as 出力ファイル名
-// シート名をすべて変更し不要なシートを削除
-var lastSheet = book.Worksheets(book.Worksheets.Count);
+// シート名をすべて変更し不要なシートを削除し、 index シートをつけて、最後に save as 出力ファイル名
+
+// シート名をすべて変更
 for (var i = 0; i < root.children.length; i++) {
     var nodeH1 = root.children[i];
     var name = nodeH1.text;
-    var sheet = findSheetByName(book, "#" + nodeH1.id);
+    var sheet = book.Worksheets("#" + nodeH1.id);
     sheet.Name = name;
-
-    // 末尾に移動
-    sheet.Move(null, lastSheet);
-    lastSheet = sheet;
-
-    // sheetHashes はもう使わないので、削除するシートを調べるために利用
-    // ここで delete して残ったものが削除対象のシートになる
-    delete sheetHashes[nodeH1.id];
 }
 
-excel.DisplayAlerts = false;
+(function() {
+    var sheetsToDelete = _.keys(sheetHashes);
+    var usedSheets = _.transform(root.children, function(result, nodeH1) {
+        result.push(nodeH1.id);
+    });
 
-// 残ったシートを削除
-var sheetsToDelete = _.transform(_.keys(sheetHashes), function(result, n) {
-    result.push("#" + n);
-});
+    sheetsToDelete = _.difference(sheetsToDelete, usedSheets);
 
-// hash情報シートを削除
-sheetsToDelete.push(sheetHashSheet.Name);
+    sheetsToDelete = _.transform(sheetsToDelete, function(result, n) {
+        result.push("#" + n);
+    });
 
-book.Worksheets(jsArray1dToSafeArray1d(sheetsToDelete)).Delete();
+    // hash情報シートを削除
+    sheetsToDelete.push(sheetHashSheetName);
 
-excel.DisplayAlerts = true;
+    excel.DisplayAlerts = false;
+    book.Worksheets(jsArray1dToSafeArray1d(sheetsToDelete)).Delete();
+    excel.DisplayAlerts = true;
+})();
+
 
 function getSheetNameListString(book) {
     var s = "";
@@ -685,7 +784,7 @@ excel.ScreenUpdating = false;
                     if (value0 === templateName) {
                         for (var i = 0; i < numH1s; i++) {
                             var sheetNameCell = cell.Offset(i, 0);
-                            var targetSheet = findSheetByName(book, afterName[i].uq);
+                            var targetSheet = book.Worksheets(afterName[i].uq);
                             // XXX: [H1] のアドレスを保存しておいて、そこを見るように
                             var cellH1 = targetSheet.Cells.Find(afterName[i].uq, targetSheet.Cells(1, 1), Excel.xlValues, Excel.xlWhole, Excel.xlByRows, Excel.xlNext, true);
                             // XXX: とりあえず size, bold だけ…
