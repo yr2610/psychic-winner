@@ -91,7 +91,7 @@ function getCleanCopyFileName(filePath)
     var parentFolderName = fso.GetParentFolderName(filePath);
 
     baseName = baseName.replace(/\-r\d+$/, "");
-    baseName = baseName.replace(/\-\d+$/, "");
+    baseName = baseName.replace(/\_\d+$/, "");
 
     var yyyymmdd = CL.yyyymmddhhmmss(new Date()).slice(0, -6);
     baseName = baseName.replace(/yyyymmdd/gi, yyyymmdd);
