@@ -576,6 +576,9 @@ while (!lastSheet.Visible) {
     lastSheet = lastSheet.Previous;
 }
 
+// XXX: 存在しなかった画像ファイル
+var pictureFilesNotFound = [];
+
 for (var i = 0; i < root.children.length; i++) {
     var nodeH1 = root.children[i];
     var name = nodeH1.text;
@@ -602,6 +605,20 @@ for (var i = 0; i < root.children.length; i++) {
     sheet.Visible = true;
 
     render(sheet, nodeH1, checkSheetData);
+}
+
+// XXX: 画像ファイルが見つからなかった場合、警告だけ出して終了はしない
+if (!_.isEmpty(pictureFilesNotFound)) {
+    //var errorMessage = "画像ファイル\n" + relativeFilePath + "\nが存在しません";
+    var threshold = 5;
+    if (pictureFilesNotFound.length > threshold) {
+        var numRemains = pictureFilesNotFound.length - threshold;
+        pictureFilesNotFound = _.take(pictureFilesNotFound, threshold);
+        pictureFilesNotFound.push("\n（他 " + String(numRemains) + " ファイル）");
+    }
+
+    var errorMessage = "次の画像ファイルが存在しません。\n\n" + pictureFilesNotFound.join("\n");
+    shell.Popup(errorMessage, 0, "警告", ICON_EXCLA);
 }
 
 excel.ScreenUpdating = true;
@@ -913,10 +930,17 @@ function addPictureAsComment(cell, path)
 
         if (!fso.FileExists(path)) {
             var relativeFilePath = getRelativePath(path, filePath, fso);
-            var errorMessage = "画像ファイル\n" + relativeFilePath + "\nが存在しません";
+            //var errorMessage = "画像ファイル\n" + relativeFilePath + "\nが存在しません";
 
-            finalizeExcel();
-            Error(errorMessage);
+            //finalizeExcel();
+            //Error(errorMessage);
+            // XXX: 警告だけ出して終了はしない
+            pictureFilesNotFound.push(relativeFilePath);
+
+            // 「画像なし」の画像を貼っておく
+            var currentDirectory = fso.GetParentFolderName(WScript.ScriptFullName);
+            var templatesDirectory = fso.BuildPath(currentDirectory, "images");
+            path = fso.BuildPath(templatesDirectory, "no_image.jpg");
         }
     })();
 
