@@ -1,4 +1,4 @@
-// プロジェクトID
+// プロジェクト ID
 [project]: PROJECT
 
 // 出力ファイル（Excel）名
