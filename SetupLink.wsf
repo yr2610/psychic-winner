@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<package>
+  <job>
+    <script language="JavaScript">
+//<![CDATA[
+
+//  Shell関連の操作を提供するオブジェクトその2を取得
+var sh = new ActiveXObject( "Shell.Application" );
+
+var shell = new ActiveXObject("WScript.Shell");
+
+//  ファイル関連の操作を提供するオブジェクトを取得
+var fs = new ActiveXObject( "Scripting.FileSystemObject" );
+
+function file_exists(file){
+    //var fs = WScript.CreateObject("Scripting.FileSystemObject");
+    return fs.FileExists(file);
+}
+function dir_exists(dir){
+    //var fs = WScript.CreateObject("Scripting.FileSystemObject");
+    return fs.FolderExists(dir);
+}
+function exit(){
+    WScript.Quit()
+}
+
+
+var args = WScript.Arguments;
+var argsNamed = args.Named;
+var argsUnnamed = WScript.Arguments.Unnamed;
+
+if (( args.length != 1 ) ||
+    ( argsUnnamed(0) == "")) {
+    Error("Make 対象のソースファイル（.txt）をドロップしてください。");
+}
+
+var targetFilePath = argsUnnamed(0);
+var folderPath = fs.GetParentFolderName(targetFilePath);
+
+//WScript.Echo(folderPath);
+
+//  Folderオブジェクトを取得
+var folder = fs.GetFolder(folderPath);
+
+var thisFolder = fs.getParentFolderName(WScript.ScriptFullName);
+
+//  ショートカットファイル作成
+var lnkFilePath = fs.BuildPath(folderPath, "Make - " + fs.GetBaseName(targetFilePath) + ".lnk");
+var lnkfile = shell.CreateShortcut(lnkFilePath);
+
+//  ショートカットの参照先パスを設定
+//  (先頭に「file:/」を付加するとアイコンが自動設定される)
+lnkfile.TargetPath = fs.BuildPath(thisFolder, "Make.wsf");
+lnkfile.Arguments = '"' + targetFilePath + '"';
+lnkfile.Save();
+
+var wsfFiles = [
+    "Commit",
+    "Update",
+    "Export",
+    "Import",
+    "Finalize"
+];
+
+var buildFolder = fs.BuildPath(folderPath, "build");
+if (!dir_exists(buildFolder)) {
+    fs.CreateFolder(buildFolder);
+}
+for (var i = 0; i < wsfFiles.length; i++) {
+    var wsfName = wsfFiles[i];
+    var lnkfile = shell.CreateShortcut(fs.BuildPath(buildFolder, wsfName + ".lnk"));
+    lnkfile.TargetPath = fs.BuildPath(thisFolder, wsfName + ".wsf");
+    lnkfile.Save();
+}
+
+
+//  オブジェクトを解放
+fs = null;
+shell = null;
+sh = null;
+
+//]]>
+    </script>
+  </job>
+</package>
