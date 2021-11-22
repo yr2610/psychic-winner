@@ -152,6 +152,7 @@ includePath.push(fso.GetParentFolderName(filePath));
 
 // グローバルな設定
 // 現状 includePath のみ
+// FIXME: 廃止予定
 (function(){
     var confFilePath = "conf.yml";
     confFilePath = fso.BuildPath(fso.GetParentFolderName(WScript.ScriptFullName), confFilePath);
@@ -192,6 +193,15 @@ var conf = {};
         });
     }
 
+    // path を include 先のファイル基準の絶対パスに変換
+    function processPath(data, baseDirectory) {
+        if (_.isUndefined(data.$rootDirectory)) {
+            return;
+        }
+
+        data.$rootDirectory = fso.BuildPath(baseDirectory, data.$rootDirectory);
+    }
+
     // 循環しないように
     // 循環の対処はしないので、無限ループになる
     function processIncludeFiles(data, baseFile) {
@@ -205,6 +215,9 @@ var conf = {};
 
         // XXX: ついでに functions もここで
         processFunctions(data);
+
+        // XXX: クソ実装ではあるけど、path の対処もここで
+        processPath(data, baseDirectory);
 
         if (_.isUndefined(data.$include)) {
             return;
@@ -899,8 +912,10 @@ stack.push(root);
     var variableList = [
         "outputFilename",
         "projectId",
-        "indexSheetname"
+        "indexSheetname",
+        "rootDirectory"
     ];
+
     _.forEach(variableList, function(key) {
         var value = conf["$" + key];
         if (_.isUndefined(value)) {
@@ -912,6 +927,15 @@ stack.push(root);
         }
         root.variables[key] = value;
     });
+
+    if (!_.isUndefined(root.variables.rootDirectory)) {
+        // 相対パスに変換
+        var basePath = fso.GetParentFolderName(filePath);
+        var absolutePath = root.variables.rootDirectory;
+        var relativePath = CL.getRelativePath(basePath, absolutePath);
+
+        root.variables.rootDirectory = relativePath;
+    }
 
     if (!_.isUndefined(conf.$input)) {
         var data = conf.$input;
