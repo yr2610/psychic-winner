@@ -410,6 +410,51 @@ CL.makeBackupFile = function (filePath, relativeFolderPath) {
 };
 CL.MakeBackupFile = CL.makeBackupFile;
 
+// https://dobon.net/vb/dotnet/file/getabsolutepath.html#section4 をそのまま移植
+CL.getRelativePath = function (basePath, absolutePath) {
+  if (basePath == null || basePath.length == 0) {
+      return absolutePath;
+  }
+  if (absolutePath == null || absolutePath.length == 0) {
+      return "";
+  }
+
+  var directorySeparatorChar = "\\";
+  var parentDirectoryString = ".." + directorySeparatorChar;
+
+  basePath = _.trimRight(basePath, directorySeparatorChar);
+
+  //パスを"\"で分割する
+  var basePathDirs = basePath.split(directorySeparatorChar);
+  var absolutePathDirs = absolutePath.split(directorySeparatorChar);
+
+  //基準パスと絶対パスで、先頭から共通する部分を探す
+  var commonCount = 0;
+  for (var i = 0;
+      i < basePathDirs.length &&
+      i < absolutePathDirs.length &&
+      basePathDirs[i].toUpperCase() === absolutePathDirs[i].toUpperCase();
+      i++) {
+      //共通部分の数を覚えておく
+      commonCount++;
+  }
+
+  //共通部分がない時
+  if (commonCount == 0) {
+      return absolutePath;
+  }
+
+  //共通部分以降の基準パスのフォルダの深さを取得する
+  var baseOnlyCount = basePathDirs.length - commonCount;
+  //その数だけ"..\"を付ける
+  var buf = _.repeat(parentDirectoryString, baseOnlyCount);
+
+  //共通部分以降の絶対パス部分を追加する
+  buf += absolutePathDirs.slice(commonCount).join(directorySeparatorChar);
+
+  return buf;
+}
+
 
 CL.createRandomId = function (len) {
   var c = "abcdefghijklmnopqrstuvwxyz";
