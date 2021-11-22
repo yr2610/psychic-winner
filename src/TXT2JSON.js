@@ -150,15 +150,137 @@ var includePath = [];
 // メインソースファイルのrootフォルダはデフォルトで最優先で探す
 includePath.push(fso.GetParentFolderName(filePath));
 
-var confFilePath = "conf.yml";
-
-confFilePath = fso.BuildPath(fso.GetParentFolderName(WScript.ScriptFullName), confFilePath);
-if (fso.FileExists(confFilePath)) {
-    var conf = CL.readYAMLFile(confFilePath);
-    if (!_.isUndefined(conf.includePath)) {
-        includePath = includePath.concat(conf.includePath);
+// グローバルな設定
+// 現状 includePath のみ
+(function(){
+    var confFilePath = "conf.yml";
+    confFilePath = fso.BuildPath(fso.GetParentFolderName(WScript.ScriptFullName), confFilePath);
+    if (!fso.FileExists(confFilePath)) {
+        return;
     }
-}
+    var data = CL.readYAMLFile(confFilePath);
+
+    // include文法のパス用
+    if (!_.isUndefined(data.includePath)) {
+        includePath = includePath.concat(data.includePath);
+    }
+})();
+
+var conf = {};
+(function(){
+    var confFilePath = "conf.yml";
+
+    confFilePath = fso.BuildPath(fso.GetParentFolderName(filePath), confFilePath);
+    if (!fso.FileExists(confFilePath)) {
+        return;
+    }
+    var data = CL.readYAMLFile(confFilePath);
+
+    // include文法のパス用
+    if (!_.isUndefined(data.includePath)) {
+        includePath = includePath.concat(data.includePath);
+    }
+
+    function processFunctions(data) {
+        if (_.isUndefined(data.$functions)) {
+            return;
+        }
+        var functions = data.$functions;
+        delete data.$functions;
+        _.forEach(functions, function(value, key) {
+            data[key] = Function.call(this, 'return ' + value)();
+        });
+    }
+
+    // 循環しないように
+    // 循環の対処はしないので、無限ループになる
+    function processIncludeFiles(data, baseFile) {
+        var baseDirectory = fso.GetParentFolderName(baseFile);
+
+        // XXX: ついでに template_dxl もここで処理
+        //if (!_.isUndefined(data.$template_dxl)) {
+        //    xmlFilePath = fso.BuildPath(baseDirectory, data.$template_dxl);
+        //    delete data.$template_dxl;
+        //}
+
+        // XXX: ついでに functions もここで
+        processFunctions(data);
+
+        if (_.isUndefined(data.$include)) {
+            return;
+        }
+
+        var includeFiles = data.$include;
+        delete data.$include;
+        _.forEach(includeFiles, function(value) {
+            var includeFilePath = fso.BuildPath(baseDirectory, value);
+            var includeData = CL.readYAMLFile(includeFilePath);
+            //_.assign(data, includeData);  // 上書きする
+            _.defaults(data, includeData);  // 上書きしない
+            processIncludeFiles(data, includeFilePath);
+        });
+    }
+
+    processIncludeFiles(data, confFilePath);
+
+    _.templateSettings = {
+        evaluate: /\{\{([\s\S]+?)\}\}/g,
+        interpolate: /\{\{=([\s\S]+?)\}\}/g,
+        escape: /\{\{-([\s\S]+?)\}\}/g
+    };
+    
+    // テンプレート変数の文字列に他のテンプレート変数が含まれているの対応
+    (function(){
+        var finished = {};
+        var modified;
+        var re = /\{\{[\-=]?([\s\S]+?)\}\}/;
+        do {
+            modified = false;
+            _.forEach(data, function(value, key) {
+                if (finished[key]) {
+                    return;
+                }
+                //WScript.Echo(typeof value +"\n" + JSON.stringify(value, undefined, 4));
+                if (!re.test(value)) {
+                    finished[key] = true;
+                    return;
+                }
+                var _compile = _.template(value);
+            
+                data[key] = _compile(data);
+                modified = true;
+            });
+        } while (modified);
+
+        // 下の階層は一番上の階層の参照のみ対応
+        function compileForAllChildren(rootData, data) {
+            _.forEach(data, function(value, key) {
+                if (typeof value == "object") {
+                    if (Array.isArray(value)) {
+                        _.forEach(value, function(value, key) {
+                            compileForAllChildren(rootData, value);
+                        });
+                    }
+                    else {
+                        compileForAllChildren(rootData, value);
+                    }
+                }
+                else if (re.test(value)) {
+                    var _compile = _.template(value);
+
+                    data[key] = _compile(rootData);
+                }
+            });
+        }
+
+        compileForAllChildren(data, data);
+        
+    })();
+    
+    conf = data;
+    //printJSON(data);
+    //WScript.Quit(1);
+})();
 
 // preprocess
 // include とかコメント削除とか
@@ -466,6 +588,22 @@ function preProcessConditionalCompile(lines) {
         return eval(s);
     }
 
+    // parseError にすると ParseError を上書きするようなので parseSharpError にしておく
+    function parseSharpError(option, lineObj) {
+        if (!currentCondtion()) {
+            return;
+        }
+        var errorMessage = "@error";
+        var text = _.trim(option);
+        if (text != "") {
+            errorMessage += " : '" + text + "'";
+        }
+        else {
+            errorMessage += " が発生しました。";
+        }
+        throw new ParseError(errorMessage, lineObj);
+    }
+
     function parseDefine(option, lineObj) {
         if (!currentCondtion()) {
             return;
@@ -689,6 +827,9 @@ function preProcessConditionalCompile(lines) {
             case 'end':
                 parseEnd(option, lineObj);
                 break;
+            case 'error':
+                parseSharpError(option, lineObj);
+                break;
             default: {
                 var errorMessage = "不明の@コマンドです。";
                 throw new ParseError(errorMessage, lineObj);
@@ -748,6 +889,60 @@ var root = {
 
 };
 stack.push(root);
+
+// conf から機能を持った変数を移行
+(function(){
+    if (!_.isUndefined(conf.$templateValues)) {
+        _.assign(root.variables, conf.$templateValues);
+    }
+    
+    var variableList = [
+        "outputFilename",
+        "projectId",
+        "indexSheetname"
+    ];
+    _.forEach(variableList, function(key) {
+        var value = conf["$" + key];
+        if (_.isUndefined(value)) {
+            return;
+        }
+        // XXX: project は render 処理でしか使ってないけど、修正が面倒なのでここで対処
+        if (key == "projectId") {
+            key = "project";
+        }
+        root.variables[key] = value;
+    });
+
+    if (!_.isUndefined(conf.$input)) {
+        var data = conf.$input;
+
+        // 入力欄の順序の宣言
+        if (!_.isUndefined(data.order)) {
+            stack.peek().columnNames = data.order;
+        }
+        // デフォルト値
+        if (!_.isUndefined(data.defaultValues)) {
+            stack.peek().defaultColumnValues = data.defaultValues;
+        }
+
+        // 条件付きデフォルト値
+        if (!_.isUndefined(data.rules)) {
+            var conditionalColumnValues = stack.peek().conditionalColumnValues;
+            if (_.isUndefined(conditionalColumnValues)) {
+                conditionalColumnValues = [];
+            }
+    
+            _.forEach(data.rules, function(rule) {
+                conditionalColumnValues.push({
+                    re: new RegExp(rule.condition),
+                    columnValues: rule.values
+                });
+            });
+            stack.peek().conditionalColumnValues = conditionalColumnValues;
+        }
+    }
+
+})();
 
 // IDがふられてないノード
 var noIdNodes = {};
@@ -1059,6 +1254,23 @@ while (!srcLines.atEnd) {
             })();}
         }
 
+        var attributes = void 0;
+        while (true) {
+            var attributeMatch = text.match(/^\s*\<([A-Za-z_]\w*)\>\(([^\)]+)\)\s*(.+)$/);
+            if (attributeMatch === null) {
+                break;
+            }
+            var name = attributeMatch[1];
+            var value = attributeMatch[2];
+            text = attributeMatch[3];
+
+            if (_.isUndefined(attributes)) {
+                attributes = {};
+            }
+            attributes[name] = value;
+        }
+
+
         // TODO: leaf 以外で initialValues が設定されていたら削除しておく?
         var initialValues = void 0;
 
@@ -1216,6 +1428,7 @@ while (!srcLines.atEnd) {
             tableData: data,
             comment: comment,
             initialValues: initialValues,
+            attributes: attributes,
             url: url,
             variables: {},
             children: [],
@@ -2657,6 +2870,10 @@ CL.deletePropertyForAllNodes(root, "marker");
                 if (node.children.length > 0) {
                     return;
                 }
+                // 内容は不問
+                if (_.has(node, 'attributes.sealed')) {
+                    return;
+                }
                 var subTreeLeaf = node;
                 var target = cloneSubTree(targetClone);
                 forAllNodes_Recurse(target, null, -1, function(node, parent, index) {
@@ -2798,6 +3015,14 @@ try {
 
                     conditionalColumnValues.forEach(function(conditionalColumnValue) {
                         var re = conditionalColumnValue.re;
+                        if (!_.isArray(conditionalColumnValue.columnValues)) {
+                            result.push({
+                                re: re,
+                                columnValues: conditionalColumnValue.columnValues
+                            });
+                            return;
+                        }
+
                         var columnValuesData = conditionalColumnValue.columnValues;
                         var columnValues = {};
                         var currentColumnNames = _.last(columnNames).value;
