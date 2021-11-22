@@ -240,6 +240,10 @@ function sheetSetValues(sheet, nodeH1, sheetData, templateData) {
             continue;
         }
 
+        //if (!/(制作|ソフト)/.test(item.values["1. 確認欄"])) {
+        //    continue;
+        //}
+
         for (var header in item.values) {
             var x = srcHeaderToX[header];
             if (_.isUndefined(x)) {
@@ -265,16 +269,16 @@ function sheetSetValues(sheet, nodeH1, sheetData, templateData) {
 
     applyArrayToRange(dstRange, dstArray2d, shouldApply);
 
-    // 確認欄だけ header 込みで autofit
-    var rangeToAutofit = sheet.Cells(table.row - 1, dstColumn).Resize(1 + dstHeight, checkCellsWidth);
-    rangeToAutofit.Columns.AutoFit();
-    // 元の幅より細くならないようにしておく
-    var defaultInputColumnWidth = table.input.columnWidth;
-    for (var i = 0; i < checkCellsWidth; i++) {
-        if (rangeToAutofit.Columns(1 + i).ColumnWidth < defaultInputColumnWidth) {
-            rangeToAutofit.Columns(1 + i).ColumnWidth = defaultInputColumnWidth;
-        }
-    }
+    //// 確認欄だけ header 込みで autofit
+    //var rangeToAutofit = sheet.Cells(table.row - 1, dstColumn).Resize(1 + dstHeight, checkCellsWidth);
+    //rangeToAutofit.Columns.AutoFit();
+    //// 元の幅より細くならないようにしておく
+    //var defaultInputColumnWidth = table.input.columnWidth;
+    //for (var i = 0; i < checkCellsWidth; i++) {
+    //    if (rangeToAutofit.Columns(1 + i).ColumnWidth < defaultInputColumnWidth) {
+    //        rangeToAutofit.Columns(1 + i).ColumnWidth = defaultInputColumnWidth;
+    //    }
+    //}
 }
 
 // 指定された列だけ分割しながらできるだけまとめて入力
@@ -569,6 +573,11 @@ function bookSetDataToCheckSheets(root, book, data, templateData)
     for (var id in data.checkSheet.sheets) {
         var sheetData = data.checkSheet.sheets[id];
         var nodeH1 = idToNodeH1[id];
+
+        // 一時的に特定のシートだけを取り込み対象にしたい場合はこんな感じで
+        //if (id !== "CgdboQB9") {
+        //    continue;
+        //}
 
         if (_.isUndefined(nodeH1)) {
             // TODO: notFound に
