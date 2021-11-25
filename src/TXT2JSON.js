@@ -15,20 +15,17 @@ function printJSON(json) {
     WScript.Echo(JSON.stringify(json, undefined, 4));
 }
 
-function makeLineinfoString(filePath, lineNum)
-{
+function makeLineinfoString(filePath, lineNum) {
     var s = "";
 
     // ファイル名がない時点で終了
-    if (typeof filePath === 'undefined')
-    {
+    if (typeof filePath === 'undefined') {
         return s;
     }
 
     s += "\nファイル:\t" + filePath;
 
-    if (typeof lineNum === 'undefined')
-    {
+    if (typeof lineNum === 'undefined') {
         return s;
     }
 
@@ -85,14 +82,14 @@ function Error(message, filePath, lineNum) {
     WScript.Quit(1);
 }
 
-function createRandomId(len, random)
-{
+function createRandomId(len, random) {
     if (_.isUndefined(random)) {
         random = Math.random;
     } 
 
     var c = "abcdefghijklmnopqrstuvwxyz";
     c += c.toUpperCase();
+    // 1文字目はアルファベットのみ
     var s = c.charAt(Math.floor(random() * c.length));
     c += "0123456789";
     var cl = c.length;
@@ -106,8 +103,7 @@ function createRandomId(len, random)
 
 // key が id のリストを渡すと、それと重複しないものを返す
 // lenを1、idListに36通りすべてを渡せば簡単に無限ループになるけど、特にそのあたりのチェックとかはしない
-function createUid(len, idList)
-{
+function createUid(len, idList) {
     if (_.isUndefined(idList)) {
         idList = {};
     }
@@ -127,15 +123,13 @@ var fso = new ActiveXObject( "Scripting.FileSystemObject" );
 var stream = new ActiveXObject("ADODB.Stream");
 
 if (( WScript.Arguments.length != 1 ) ||
-    ( WScript.Arguments.Unnamed(0) == ""))
-{
+    ( WScript.Arguments.Unnamed(0) == "")) {
     Error("チェックリストのソースファイル（.txt）をドラッグ＆ドロップしてください。");
 }
 
 var filePath = WScript.Arguments.Unnamed(0);
 
-if (fso.GetExtensionName(filePath) != "txt" && fso.GetExtensionName(filePath) != "md")
-{
+if (fso.GetExtensionName(filePath) != "txt") {
     Error(".txt ファイルをドラッグ＆ドロップしてください。");
 }
 
