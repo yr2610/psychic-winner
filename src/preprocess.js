@@ -1,276 +1,87 @@
-﻿// preprocess
-// include とかコメント削除とか
-// 入れ子の include にも対応
-function preProcess(filePath, filePaths) {
+﻿function parseOneLineComment(srclines) {
     var lines = [];
-    var pathStack = [];
 
-    pathStack.push({
-        includePath: null
+    _.forEach(srclines, function(lineObj) {
+        var line = lineObj.line;
+        var cppCommentIndex = line.search("//");
+        line = line.slice(0, cppCommentIndex);
+        line = _.trimRight(line);
+
+        if (line !== "") {
+            lines.push(lineObj);
+        }
     });
-    preProcess_Recurse(filePath, lines, filePaths, pathStack);
 
     return lines;
 }
 
-function preProcess_Recurse(filePath, lines, filePaths, pathStack) {
-    filePaths.push(filePath);
-    var parentFolderName = fso.GetParentFolderName(filePath);
+// それぞれ行頭、行末に書かれた <!-- と --> のみ対応
+// 入れ子に対応
+// C style コメントについてはごくごく簡易的なもの
+// 本来 C style コメントは入れ子には対応してないけど、そこまでは対応しない
+function parseMultilineComment(srcLines) {
+    var lines = [];
+    srcLines = new ArrayReader(srcLines);
 
-    _.last(pathStack).parentFolder = parentFolderName;
+    var ParseCommentError = function(errorMessage, lineObj) {
+        this.errorMessage = errorMessage;
+        this.lineObj = lineObj;
+    };
+    
+    function _parseNest(beginRe, endRe, lineObj) {
+        if (!beginRe.test(lineObj.line)) {
+            return false;
+        }
 
-    /**/
-    stream.Type = adTypeText;
-    // XXX: charset の _autodetect_all が判別に失敗することがある問題がどうにもならないので、超適当に判別
-    // 一旦 Shift JIS としてロード
- //   stream.charset = "Shift_JIS";
-    // UTF-8 BOM なし 専用
-    stream.charset = "UTF-8";
-    stream.Open();
-    stream.LoadFromFile(filePath);
-    var allLines = stream.ReadText(adReadAll);
-    stream.Close();
+        var beginLine = lineObj;
 
-//    // 先頭の文字が Unicode っぽければロードしなおす
-//    {
-//        var charCode0 = allLines.charCodeAt(0);
-//        var charCode1 = allLines.charCodeAt(1);
-//        // UTF8 with BOM
-//        if (charCode0 === 0x30fb && charCode1 === 0xff7f)
-//        {
-//            stream.charset = "UTF-8";
-//        }
-//        else
-//        // UTF-16LE, BE
-//        if (charCode0 === 0xf8f3 && charCode1 === 0xf8f2 ||
-//            charCode0 === 0xf8f2 && charCode1 === 0xf8f3)
-//        {
-//            stream.charset = "UTF-16";
-//        }
-//        if (stream.charset !== "Shift_JIS")
-//        {
-//            stream.Open();
-//            stream.LoadFromFile(filePath);
-//            allLines = stream.ReadText(adReadAll);
-//            stream.Close();
-//        }
-//    }
-    /*/
-    // ファイルを読み取り専用で開く
-    // とりあえず Unicode(UTF-16)専用
-    var file = fso.OpenTextFile(filePath, FORREADING, true, TRISTATE_TRUE);
-    var allLines = file.ReadAll();
-    file.Close();
-    /**/
-    //var lineArray = new ArrayReader(allLines.split(/\r\n|\r|\n/));
-    // 空要素も結果に含めたいのでsplitには正規表現を使わないように
-    var lineArray = new ArrayReader(allLines.replace(/\r\n|\r/g, "\n").split("\n"));
+        for (var commentDepth = 0;;) {
+            var line = lineObj.line;
 
-    //var path = fso.BuildPath(parentFolderName, image);
+            if (beginRe.test(line)) {
+                commentDepth++;
+            }
+            if (endRe.test(line)) {
+                commentDepth--;
+            }
+            if (commentDepth == 0) {
+                break;
+            }
+            if (srcLines.atEnd) {
+                if (commentDepth > 0) {
+                    var errorMessage = "コメントが閉じていません";
+                    throw new ParseCommentError(errorMessage, beginLine);
+                }
+            }
+            lineObj = srcLines.read();
+        }
+        return true;
+    }
 
-    while (!lineArray.atEnd) {
-        var line = lineArray.read();
+    while (!srcLines.atEnd) {
+        var lineObj = srcLines.read();
 
-        if (line === "") {
+        if (_parseNest(/^\s*<!--.*/, /.*-->\s*$/, lineObj)) {
+            continue;
+        }
+        if (_parseNest(/^\s*\/\*.*/, /.*\*\/\s*$/, lineObj)) {
             continue;
         }
 
-        var cppCommentIndex = line.search(/\/{2,}/);
-        if (cppCommentIndex === 0) {
-            continue;
-        }
-        if (cppCommentIndex >= 1) {
-            line = line.slice(0, cppCommentIndex);
-        }
-
-        // それぞれ行頭、行末に書かれた <!-- と --> のみ対応
-        // 入れ子に対応
-        function parseMultilineCommments(beginRe, endRe)
-        {
-            if (!beginRe.test(line))
-            {
-                return false;
-            }
-
-            var beginLineNum = lineArray.index;
-
-            for (var commentDepth = 0;;)
-            {
-                if (beginRe.test(line))
-                {
-                    commentDepth++;
-                }
-                if (endRe.test(line))
-                {
-                    commentDepth--;
-                }
-                if (commentDepth == 0)
-                {
-                    break;
-                }
-                if (lineArray.atEnd)
-                {
-                    if (commentDepth > 0)
-                    {
-                        var errorMessage = "コメントが閉じていません";
-                        Error(errorMessage, filePath, beginLineNum);
-                    }
-                    break;
-                }
-                line = lineArray.read();
-            }
-            return true;
-        }
-        if (parseMultilineCommments(/^\s*<!--.*/, /.*-->\s*$/))
-        {
-            continue;
-        }
-        if (parseMultilineCommments(/^\s*\/\*.*/, /.*\*\/\s*$/))
-        {
-            continue;
-        }
-
-        function getLastLocalPath() {
-            for (var i = pathStack.length - 1; i >= 0; --i) {
-                var path = pathStack[i];
-                if (!path.includePath) {
-                    return path.parentFolder;
-                }
-            }
-            // ここにくるはずはない
-            return null;
-        }
-
-        function findIncludeFileOverride(targetFilePath, pathStack) {
-            // override の候補となるパスを返す
-            function getOverridePaths(targetFilePath) {
-                for (var i = pathStack.length - 1; i >= 0; --i) {
-                    var path = pathStack[i];
-                    if (!path.includePath) {
-                        return pathStack.slice(i);
-                    }
-                }
-                // ここにくるはずはない
-                return null;
-            }
-
-            // include すべきファイルを見つける
-            function findIncludeFilePath(overridePaths) {
-                var lastPath = _.last(overridePaths);
-                var sentinel = {
-                    includePath: (!lastPath.includePath) ? "dummy" : null
-                };
-                overridePaths.push(sentinel);
-                for (var i = 0; i < overridePaths.length - 1; i++) {
-                    var overridePath = overridePaths[i];
-                    if (overridePath.includePath == overridePaths[i + 1].includePath) {
-                        continue;
-                    }
-                    var path = fso.BuildPath(overridePath.parentFolder, targetFilePath);
-                    if (fso.FileExists(path)) {
-                        pathStack.push({
-                            includePath: overridePath.includePath
-                        });
-                        return path;
-                    }
-                }
-                // ここにくるはずはない
-                return null;
-            }
-
-            var overridePaths = getOverridePaths(targetFilePath);
-
-            return findIncludeFilePath(overridePaths);
-        }
-
-        function findIncludeFileIncludePath(targetFilePath, pathStack) {
-            for (var i = 0; i < includePath.length; i++) {
-                var path = fso.BuildPath(includePath[i], targetFilePath);
-                if (fso.FileExists(path)) {
-                    pathStack.push({
-                        includePath: includePath[i]
-                    });
-                    return path;
-                }
-            }
-            // include path 内に指定のファイルが見つからなかった
-            return null;
-        }
-
-        function findIncludeFile(targetFilePath) {
-            // 最初の2文字が '~/' の場合は override 指定とみなす
-            // include 元の同名のファイルを優先して読みに行く
-            // home で最後に include した場所から include 方向に向かって、そのパスで最後に inlcude した場所を検索していく
-            if (targetFilePath.slice(0, 2) == '~/') {
-                targetFilePath = targetFilePath.slice(2);
-                return findIncludeFileOverride(targetFilePath, pathStack);
-            }
-
-            // 最初の1文字が '/' の場合は include path を順に探して最初に見つかったのを採用
-            if (targetFilePath.slice(0, 1) == '/') {
-                targetFilePath = targetFilePath.slice(1);
-                return findIncludeFileIncludePath(targetFilePath, pathStack);
-            }
-
-            // include 元と同じ場所を探す
-            var filePath = fso.BuildPath(parentFolderName, targetFilePath);
-
-            if (fso.FileExists(filePath)) {
-                pathStack.push({
-                    includePath: _.last(pathStack).includePath
-                });
-
-                return filePath;
-            }
-
-            return null;
-        }
-
-        var include = line.match(/^<<\[\s*(.+)\s*\]$/);
-        if (include) {
-            var includeFile = include[1];
-            var path = findIncludeFile(includeFile);
-
-            if (!path) {
-                var errorMessage = "include ファイル\n" + includeFile + "\nが存在しません";
-
-                Error(errorMessage, filePath, lineArray.index);
-            }
-
-//            var path = fso.BuildPath(parentFolderName, include[1]);
-//
-//            // ファイルが存在するか確認
-//            (function () {
-//                var fso = new ActiveXObject("Scripting.FileSystemObject");
-//
-//                if (!fso.FileExists(path)) {
-//                    var relativeFilePath = getRelativePath(path, rootFilePath, fso);
-//                    var errorMessage = "include ファイル\n" + relativeFilePath + "\nが存在しません";
-//
-//                    Error(errorMessage, filePath, lineArray.index);
-//                }
-//            })();
-            
-            preProcess_Recurse(path, lines, filePaths, pathStack);
-            pathStack.pop();
-            continue;
-        }
-
-        var lineObj = {
-            line: line,
-            lineNum: lineArray.index,   // 1 origin
-            filePath: filePath
-        };
         lines.push(lineObj);
     }
+
+    return lines;
 }
 
+
 // #define とか #if else endif 的なの
-// include とコメント削除が適用済みのを渡す
-function preProcessConditionalCompile(lines) {
+// コメント削除が適用済みのを渡す
+// objs: 定義済みマクロ変数
+function preProcessConditionalCompile(lines, defines) {
     var srcLines = new ArrayReader(lines);
     var dstLines = [];
-    var objs = {};
+    var objs = defines;
     var states = []; // 入れ子対応のためスタックにしておく
 
     function currentCondtion() {
@@ -424,6 +235,10 @@ function preProcessConditionalCompile(lines) {
             var errorMessage = '右辺の式 "' + value + '" が不正です。';
             throw new ParseError(errorMessage, lineObj);
         }
+        lineObj.define = {
+            name: name,
+            value: objs[name]
+        };
         //WScript.Echo(JSON.stringify(objs, undefined, 4));
     }
 
@@ -577,3 +392,318 @@ function preProcessConditionalCompile(lines) {
 
     return dstLines;
 }
+
+// filePaths: 含まれるすべてのファイルのパス
+function preProcess_Recurse(filePath, filePaths, pathStack, defines) {
+    filePaths.push(filePath);
+    var parentFolderName = fso.GetParentFolderName(filePath);
+
+    _.last(pathStack).parentFolder = parentFolderName;
+
+    stream.Type = adTypeText;
+    // UTF-8 BOM なし 専用
+    stream.charset = "UTF-8";
+    stream.Open();
+    stream.LoadFromFile(filePath);
+    var allLines = stream.ReadText(adReadAll);
+    stream.Close();
+
+    //var path = fso.BuildPath(parentFolderName, image);
+
+    //var lineArray = new ArrayReader(allLines.split(/\r\n|\r|\n/));
+    // 空要素も結果に含めたいのでsplitには正規表現を使わないように
+    var lineArray = allLines.replace(/\r\n|\r/g, "\n").split("\n");
+
+    // 最初に lineObj にしてしまう
+    var lines = [];
+    _.forEach(lineArray, function(line, lineNum) {
+        if (line === "") {
+            return;
+        }
+
+        var lineObj = {
+            line: line,
+            lineNum: 1 + lineNum,   // 1 origin
+            filePath: filePath
+        };
+        lines.push(lineObj);
+    });
+
+    try {
+        lines = parseOneLineComment(lines);
+        lines = parseMultilineComment(lines);
+        lines = preProcessConditionalCompile(lines, defines);
+    }
+    catch (e) {
+        if (_.isUndefined(e.lineObj) || _.isUndefined(e.errorMessage)){
+            throw e;
+        }
+        parseError(e);
+    }
+
+    var srcLines = new ArrayReader(lines);
+
+    var dstLines = [];
+
+    while (!srcLines.atEnd) {
+        var lineObj = srcLines.read();
+        var line = lineObj.line;
+
+        if (define in lineObj) {
+            var define = lineObj.define;
+            defines[define.name] = define.value;
+        }
+
+        var includeMatch = line.match(/^<<\[\s*(.+)\s*\]$/);
+
+        if (includeMatch) {
+            var includeFile = includeMatch[1];
+            // include 元と同じ場所を探す
+            var path = fso.BuildPath(parentFolderName, includeFile);
+
+            if (!fso.FileExists(filePath)) {
+                var errorMessage = "include ファイル\n" + includeFile + "\nが存在しません";
+                throw new ParseError(errorMessage, lineObj);
+            }
+
+            var includeLines = preProcess_Recurse(path, filePaths, pathStack, defines);
+            
+            dstLines = dstLines.concat(includeLines);
+
+            pathStack.pop();
+            continue;
+        }
+        else {
+            dstLines.push(lineObj);
+        }
+    }
+
+    //printJSON(lines);
+    //WScript.Quit(1);
+
+    return dstLines;
+}
+
+
+function preProcess_Recurse_old(filePath, lines, filePaths, pathStack) {
+    filePaths.push(filePath);
+    var parentFolderName = fso.GetParentFolderName(filePath);
+
+    _.last(pathStack).parentFolder = parentFolderName;
+
+    stream.Type = adTypeText;
+    // UTF-8 BOM なし 専用
+    stream.charset = "UTF-8";
+    stream.Open();
+    stream.LoadFromFile(filePath);
+    var allLines = stream.ReadText(adReadAll);
+    stream.Close();
+
+    //var path = fso.BuildPath(parentFolderName, image);
+
+    //var lineArray = new ArrayReader(allLines.split(/\r\n|\r|\n/));
+    // 空要素も結果に含めたいのでsplitには正規表現を使わないように
+    var lineArray = allLines.replace(/\r\n|\r/g, "\n").split("\n");
+
+    // 最初に lineObj にしてしまう
+    var lines = [];
+    _.forEach(lineArray, function(line, lineNum) {
+        if (line === "") {
+            return;
+        }
+
+        var lineObj = {
+            line: line,
+            lineNum: 1 + lineNum,   // 1 origin
+            filePath: filePath
+        };
+        lines.push(lineObj);
+    });
+
+    try {
+        lines = parseOneLineComment(lines);
+        lines = parseMultilineComment(lines);
+        lines = preProcessConditionalCompile(lines);
+    }
+    catch (e) {
+        if (_.isUndefined(e.lineObj) || _.isUndefined(e.errorMessage)){
+            throw e;
+        }
+        parseError(e);
+    }
+
+    printJSON(lines);
+    WScript.Quit(1);
+
+    lineArray = new ArrayReader(lines);
+
+    while (!lineArray.atEnd) {
+        var lineObj = lineArray.read();
+        var line = lineObj.line;
+
+        var includeMatch = line.match(/^<<\[\s*(.+)\s*\]$/);
+        if (includeMatch) {
+            var includeFile = includeMatch[1];
+            var path = findIncludeFile(includeFile);
+
+            if (!path) {
+                var errorMessage = "include ファイル\n" + includeFile + "\nが存在しません";
+                throw new ParseError(errorMessage, lineObj);
+            }
+
+            preProcess_Recurse(path, lines, filePaths, pathStack);
+            pathStack.pop();
+            continue;
+        }
+
+
+        // 何のために作ったか不明
+        function getLastLocalPath() {
+            for (var i = pathStack.length - 1; i >= 0; --i) {
+                var path = pathStack[i];
+                if (!path.includePath) {
+                    return path.parentFolder;
+                }
+            }
+            // ここにくるはずはない
+            return null;
+        }
+
+        function findIncludeFileOverride(targetFilePath, pathStack) {
+            // override の候補となるパスを返す
+            function getOverridePaths(targetFilePath) {
+                for (var i = pathStack.length - 1; i >= 0; --i) {
+                    var path = pathStack[i];
+                    if (!path.includePath) {
+                        return pathStack.slice(i);
+                    }
+                }
+                // ここにくるはずはない
+                return null;
+            }
+
+            // include すべきファイルを見つける
+            function findIncludeFilePath(overridePaths) {
+                var lastPath = _.last(overridePaths);
+                var sentinel = {
+                    includePath: (!lastPath.includePath) ? "dummy" : null
+                };
+                overridePaths.push(sentinel);
+                for (var i = 0; i < overridePaths.length - 1; i++) {
+                    var overridePath = overridePaths[i];
+                    if (overridePath.includePath == overridePaths[i + 1].includePath) {
+                        continue;
+                    }
+                    var path = fso.BuildPath(overridePath.parentFolder, targetFilePath);
+                    if (fso.FileExists(path)) {
+                        pathStack.push({
+                            includePath: overridePath.includePath
+                        });
+                        return path;
+                    }
+                }
+                // ここにくるはずはない
+                return null;
+            }
+
+            var overridePaths = getOverridePaths(targetFilePath);
+
+            return findIncludeFilePath(overridePaths);
+        }
+
+        function findIncludeFileIncludePath(targetFilePath, pathStack) {
+            for (var i = 0; i < includePath.length; i++) {
+                var path = fso.BuildPath(includePath[i], targetFilePath);
+                if (fso.FileExists(path)) {
+                    pathStack.push({
+                        includePath: includePath[i]
+                    });
+                    return path;
+                }
+            }
+            // include path 内に指定のファイルが見つからなかった
+            return null;
+        }
+
+        function findIncludeFile(targetFilePath) {
+            // 最初の2文字が '~/' の場合は override 指定とみなす
+            // include 元の同名のファイルを優先して読みに行く
+            // home で最後に include した場所から include 方向に向かって、そのパスで最後に inlcude した場所を検索していく
+            if (targetFilePath.slice(0, 2) == '~/') {
+                targetFilePath = targetFilePath.slice(2);
+                return findIncludeFileOverride(targetFilePath, pathStack);
+            }
+
+            // 最初の1文字が '/' の場合は include path を順に探して最初に見つかったのを採用
+            if (targetFilePath.slice(0, 1) == '/') {
+                targetFilePath = targetFilePath.slice(1);
+                return findIncludeFileIncludePath(targetFilePath, pathStack);
+            }
+
+            // include 元と同じ場所を探す
+            var filePath = fso.BuildPath(parentFolderName, targetFilePath);
+
+            if (fso.FileExists(filePath)) {
+                pathStack.push({
+                    includePath: _.last(pathStack).includePath
+                });
+
+                return filePath;
+            }
+
+            return null;
+        }
+
+        var include = line.match(/^<<\[\s*(.+)\s*\]$/);
+        if (include) {
+            var includeFile = include[1];
+            var path = findIncludeFile(includeFile);
+
+            if (!path) {
+                var errorMessage = "include ファイル\n" + includeFile + "\nが存在しません";
+
+                Error(errorMessage, filePath, lineArray.index);
+            }
+
+//            var path = fso.BuildPath(parentFolderName, include[1]);
+//
+//            // ファイルが存在するか確認
+//            (function () {
+//                var fso = new ActiveXObject("Scripting.FileSystemObject");
+//
+//                if (!fso.FileExists(path)) {
+//                    var relativeFilePath = getRelativePath(path, rootFilePath, fso);
+//                    var errorMessage = "include ファイル\n" + relativeFilePath + "\nが存在しません";
+//
+//                    Error(errorMessage, filePath, lineArray.index);
+//                }
+//            })();
+            
+            preProcess_Recurse(path, lines, filePaths, pathStack);
+            pathStack.pop();
+            continue;
+        }
+
+        var lineObj = {
+            line: line,
+            lineNum: lineArray.index,   // 1 origin
+            filePath: filePath
+        };
+        lines.push(lineObj);
+    }
+}
+
+// preprocess
+// include とかコメント削除とか
+// 入れ子の include にも対応
+function preProcess(filePath, filePaths) {
+    var pathStack = [];
+    var defines = {};
+
+    pathStack.push({
+        includePath: null
+    });
+
+    return preProcess_Recurse(filePath, filePaths, pathStack, defines);
+}
+

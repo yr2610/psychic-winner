@@ -294,7 +294,6 @@ var allFilePaths = [];
 
 var rootFilePath = filePath;
 var srcLines = preProcess(filePath, allFilePaths);
-srcLines = preProcessConditionalCompile(srcLines);
 srcLines = new ArrayReader(srcLines);
 
 var stack = new Stack();
