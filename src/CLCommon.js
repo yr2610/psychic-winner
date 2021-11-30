@@ -419,10 +419,16 @@ CL.getRelativePath = function (basePath, absolutePath) {
       return "";
   }
 
+  var fso = new ActiveXObject("Scripting.FileSystemObject");
   var directorySeparatorChar = "\\";
   var parentDirectoryString = ".." + directorySeparatorChar;
 
   basePath = _.trimRight(basePath, directorySeparatorChar);
+
+  var fso = new ActiveXObject("Scripting.FileSystemObject");
+
+  basePath = fso.GetAbsolutePathName(basePath);
+  absolutePath = fso.GetAbsolutePathName(absolutePath);
 
   //パスを"\"で分割する
   var basePathDirs = basePath.split(directorySeparatorChar);
