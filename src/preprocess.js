@@ -6,13 +6,12 @@
         var cppCommentIndex = line.search(/\s*\/\//);
 
         if (cppCommentIndex != -1) {
-            line = line.slice(0, cppCommentIndex);
-            //line = _.trimRight(line);
-            if (line === "") {
+            if (cppCommentIndex == 0) {
                 return;
             }
             // 行末のコメント
-            lineObj.comment = lineObj.line.slice(cppCommentIndex);
+            lineObj.comment = line.slice(cppCommentIndex);
+            line = line.slice(0, cppCommentIndex);
             lineObj.line = line;
         }
 
