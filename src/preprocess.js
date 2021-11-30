@@ -3,13 +3,20 @@
 
     _.forEach(srclines, function(lineObj) {
         var line = lineObj.line;
-        var cppCommentIndex = line.search("//");
-        line = line.slice(0, cppCommentIndex);
-        line = _.trimRight(line);
+        var cppCommentIndex = line.search(/\s*\/\//);
 
-        if (line !== "") {
-            lines.push(lineObj);
+        if (cppCommentIndex != -1) {
+            line = line.slice(0, cppCommentIndex);
+            //line = _.trimRight(line);
+            if (line === "") {
+                return;
+            }
+            // 行末のコメント
+            lineObj.comment = lineObj.line.slice(cppCommentIndex);
+            lineObj.line = line;
         }
+
+        lines.push(lineObj);
     });
 
     return lines;
@@ -441,6 +448,9 @@ function preProcess_Recurse(filePath, filePaths, pathStack, defines) {
         parseError(e);
     }
 
+    //printJSON(lines);
+    //WScript.Quit(1);
+
     var srcLines = new ArrayReader(lines);
 
     var dstLines = [];
@@ -449,7 +459,7 @@ function preProcess_Recurse(filePath, filePaths, pathStack, defines) {
         var lineObj = srcLines.read();
         var line = lineObj.line;
 
-        if (define in lineObj) {
+        if (!_.isUndefined(lineObj.define)) {
             var define = lineObj.define;
             defines[define.name] = define.value;
         }
@@ -477,9 +487,6 @@ function preProcess_Recurse(filePath, filePaths, pathStack, defines) {
             dstLines.push(lineObj);
         }
     }
-
-    //printJSON(lines);
-    //WScript.Quit(1);
 
     return dstLines;
 }

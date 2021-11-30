@@ -627,6 +627,10 @@ while (!srcLines.atEnd) {
             // ID 挿入して書き換え
             newSrcText = match[1] + " [#{uid}]" + match[2];
 
+            if (!_.isUndefined(lineObj.comment)) {
+                newSrcText += lineObj.comment;
+            }
+
             AddNoIdNode(item, lineObj.filePath, lineObj.lineNum, newSrcText);
         }
 
@@ -887,6 +891,10 @@ while (!srcLines.atEnd) {
 
             // ID 挿入して書き換え
             newSrcText = match[1] + " [#{uid}]" + match[2];
+
+            if (!_.isUndefined(lineObj.comment)) {
+                newSrcText += lineObj.comment;
+            }
 
             AddNoIdNode(item, lineObj.filePath, lineObj.lineNum, newSrcText);
         }
