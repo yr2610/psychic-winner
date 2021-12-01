@@ -399,12 +399,73 @@ function preProcessConditionalCompile(lines, defines) {
     return dstLines;
 }
 
+// filename.txt とだけ指定した場合は現在のプロジェクトの source 直下
+// projectname:filename.txt と指定すると外部プロジェクトの source 直下
+// 外部プロジェクトは root を最優先で検索。次に include path から検索（未対応）
+// プロジェクト指定なしの場合 ./filename.txt と指定するとそのファイルからの相対
+function parseIncludeFilePath(s, currentProjectPath, currentFilePath) {
+
+    var IncludeFilePathError = function(errorMessage) {
+        this.errorMessage = errorMessage;
+    };
+
+    var includeMatch = s.match(/^((\/)?([^:]+):)?(\.\/)?(.+)$/);
+    //printJSON(includeMatch);
+
+    // 無効なパス指定
+    if (!includeMatch) {
+        var message = "無効なパスです";
+        throw new IncludeFilePathError(message);
+    }
+
+    var localPath = includeMatch[5];
+    var projectDirectory = includeMatch[3];
+    // 現在のファイル(include元)からの相対指定
+    var relativeFromCurrent = (includeMatch[4] != "");
+
+    if (relativeFromCurrent) {
+        if (projectDirectory != "") {
+            var message = "外部参照では現在のファイルからの相対指定はできません";
+            throw new IncludeFilePathError(message);
+        }
+        var directory = fso.GetParentFolderName(currentFilePath);
+
+        return {
+            projectDirectory: currentProjectPath,
+            sourceDirectory: directory,
+            filePath: fso.BuildPath(directory, localPath)
+        };
+    }
+
+    if (projectDirectory == "") {
+        projectDirectory = currentProjectPath;
+    }
+    else {
+        // root 指定
+        var fromRoot = (includeMatch[2] != "");
+        if (fromRoot) {
+            var rootPath = conf.$rootDirectory;
+            projectDirectory = fso.BuildPath(rootPath, projectDirectory);
+        }
+    }
+
+    // source 直下からの相対
+    var directory = fso.BuildPath(projectDirectory, sourceDirectory);
+
+    return {
+        projectDirectory: projectDirectory,
+        sourceDirectory: directory,
+        filePath: fso.BuildPath(directory, localPath)
+    };
+    //WScript.Echo(localPath);
+}
+
 // filePaths: 含まれるすべてのファイルのパス
 function preProcess_Recurse(filePath, filePaths, pathStack, defines) {
     filePaths.push(filePath);
     var parentFolderName = fso.GetParentFolderName(filePath);
 
-    _.last(pathStack).parentFolder = parentFolderName;
+    //_.last(pathStack).parentFolder = parentFolderName;
 
     stream.Type = adTypeText;
     // UTF-8 BOM なし 専用
@@ -435,17 +496,9 @@ function preProcess_Recurse(filePath, filePaths, pathStack, defines) {
         lines.push(lineObj);
     });
 
-    try {
-        lines = parseOneLineComment(lines);
-        lines = parseMultilineComment(lines);
-        lines = preProcessConditionalCompile(lines, defines);
-    }
-    catch (e) {
-        if (_.isUndefined(e.lineObj) || _.isUndefined(e.errorMessage)){
-            throw e;
-        }
-        parseError(e);
-    }
+    lines = parseOneLineComment(lines);
+    lines = parseMultilineComment(lines);
+    lines = preProcessConditionalCompile(lines, defines);
 
     //printJSON(lines);
     //WScript.Quit(1);
@@ -467,11 +520,18 @@ function preProcess_Recurse(filePath, filePaths, pathStack, defines) {
 
         if (includeMatch) {
             var includeFile = includeMatch[1];
-            // include 元と同じ場所を探す
-            var path = fso.BuildPath(parentFolderName, includeFile);
+            var includeFileInfo;
 
-            if (!fso.FileExists(filePath)) {
-                var errorMessage = "include ファイル\n" + includeFile + "\nが存在しません";
+            var currentProjectDirectory = _.last(projectDirectoryStack);
+            includeFileInfo = parseIncludeFilePath(includeFile, currentProjectDirectory, filePath);
+
+            projectDirectoryStack.push(includeFileInfo.projectDirectory);
+
+            var path = includeFileInfo.filePath;
+
+            if (!fso.FileExists(path)) {
+                var relativeProjectPath = CL.getRelativePath(conf.$rootDirectory, includeFileInfo.sourceDirectory);
+                var errorMessage = "フォルダ\n" + relativeProjectPath + "\nには\nファイル\n" + includeFile + "\nが存在しません";
                 throw new ParseError(errorMessage, lineObj);
             }
 
@@ -479,7 +539,8 @@ function preProcess_Recurse(filePath, filePaths, pathStack, defines) {
             
             dstLines = dstLines.concat(includeLines);
 
-            pathStack.pop();
+            projectDirectoryStack.pop();
+            //pathStack.pop();
             continue;
         }
         else {
@@ -710,6 +771,14 @@ function preProcess(filePath, filePaths) {
         includePath: null
     });
 
-    return preProcess_Recurse(filePath, filePaths, pathStack, defines);
+    try {
+        return preProcess_Recurse(filePath, filePaths, pathStack, defines);
+    }
+    catch (e) {
+        if (_.isUndefined(e.lineObj) || _.isUndefined(e.errorMessage)){
+            throw e;
+        }
+        parseError(e);
+    }
 }
 

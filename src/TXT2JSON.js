@@ -139,6 +139,14 @@ htmlfile.write('<meta http-equiv="x-ua-compatible" content="IE=Edge"/>');
 var performance = htmlfile.parentWindow.performance;
 htmlfile.close();
 
+// プロジェクトフォルダ内のソース置き場
+var sourceDirectory = "source";
+
+var projectDirectoryStack = [];
+
+// メインソースファイルのフォルダを現在のプロジェクトフォルダとする
+projectDirectoryStack.push(fso.GetParentFolderName(filePath));
+
 var includePath = [];
 
 // メインソースファイルのrootフォルダはデフォルトで最優先で探す
