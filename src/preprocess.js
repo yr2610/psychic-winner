@@ -441,11 +441,13 @@ function parseIncludeFilePath(s, currentProjectPath, currentFilePath) {
         projectDirectory = currentProjectPath;
     }
     else {
-        // root 指定
+        // root 指定の有無に関係なく root を優先して読む
+        var rootPath = conf.$rootDirectory;
+        projectDirectory = fso.BuildPath(rootPath, projectDirectory);
+
         var fromRoot = (includeMatch[2] != "");
-        if (fromRoot) {
-            var rootPath = conf.$rootDirectory;
-            projectDirectory = fso.BuildPath(rootPath, projectDirectory);
+        if (!fromRoot) {
+            // TODO: root 指定ナシの場合は include path も検索する
         }
     }
 
