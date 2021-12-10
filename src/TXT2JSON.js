@@ -300,7 +300,7 @@ var conf = {};
 var allFilePaths = [];
 
 var rootFilePath = filePath;
-var srcLines = preProcess(filePath, allFilePaths);
+var srcLines = preProcess(filePath);
 srcLines = new ArrayReader(srcLines);
 
 var stack = new Stack();
@@ -2788,45 +2788,23 @@ Error(s);
 // TODO: leaf じゃない node に ID がふられてたら無駄なので削除
 
 
-function getFileInfo(filePath)
-{
-    var fso = new ActiveXObject("Scripting.FileSystemObject");
-    var file = fso.GetFile(filePath);
-    var info = {
-        fileName: fso.GetFileName(filePath),
-        dateLastModified: new Date(file.DateLastModified).toString()
-    };
+//function getFileInfo(filePath)
+//{
+//    var fso = new ActiveXObject("Scripting.FileSystemObject");
+//    var file = fso.GetFile(filePath);
+//    var info = {
+//        fileName: fso.GetFileName(filePath),
+//        dateLastModified: new Date(file.DateLastModified).toString()
+//    };
+//
+//    return info;
+//}
 
-    return info;
-}
-
-var allFileInfo = [];
-for (var i = 0; i < allFilePaths.length; i++)
-{
-    allFileInfo.push(getFileInfo(allFilePaths[i]));
-}
-
-// txt2json 自身がソースファイルを更新するので、最後に
-root.sourceFiles = allFileInfo;
-
-var srcTextLastModifiedDate = (function(){
-    var maxTime = 0;
-    var newestDate = null;
-    for (var i = 0; i < root.sourceFiles.length; i++)
-    {
-        var date = new Date(root.sourceFiles[i].dateLastModified);
-        var time = date.getTime();
-        if (time > maxTime)
-        {
-            maxTime = time;
-            newestDate = date;
-        }
-    }
-    return newestDate;
-})();
-
+// TODO: root.id 廃止。 commit, update とかで使ってるので修正範囲は広い
 (function() {
-    var seed = srcTextLastModifiedDate.getTime();
+    // XXX: とりあえず現在時刻で
+    var date = new Date();
+    var seed = date.getTime();
     var random = createXor128(seed);
 
     // 特に意味はないけど、通常の id のより長めにしておく

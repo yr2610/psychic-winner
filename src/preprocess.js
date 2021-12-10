@@ -525,14 +525,9 @@ function parseIncludeParameters(s, variables) {
 }
 
 // filePaths: 含まれるすべてのファイルのパス
-function preProcess_Recurse(filePathAbs, currentProjectDirectoryFromRoot, filePaths, pathStack, defines, templateVariables) {
+function preProcess_Recurse(filePathAbs, currentProjectDirectoryFromRoot, defines, templateVariables) {
     // 上書きする（階層が深い方を優先）
     templateVariables = _.assign(templateVariables, { $currentProjectDirectory: currentProjectDirectoryFromRoot });
-
-    filePaths.push(filePathAbs);
-    var parentFolderName = fso.GetParentFolderName(filePathAbs);
-
-    //_.last(pathStack).parentFolder = parentFolderName;
 
     stream.Type = adTypeText;
     // UTF-8 BOM なし 専用
@@ -626,11 +621,10 @@ function preProcess_Recurse(filePathAbs, currentProjectDirectoryFromRoot, filePa
                 throw new ParseError(errorMessage, lineObj);
             }
 
-            var includeLines = preProcess_Recurse(path, includeProjectDirectoryFromRoot, filePaths, pathStack, defines, localTemplateVariables);
+            var includeLines = preProcess_Recurse(path, includeProjectDirectoryFromRoot, defines, localTemplateVariables);
             
             dstLines = dstLines.concat(includeLines);
 
-            //pathStack.pop();
             continue;
         }
         else {
@@ -644,13 +638,8 @@ function preProcess_Recurse(filePathAbs, currentProjectDirectoryFromRoot, filePa
 // preprocess
 // include とかコメント削除とか
 // 入れ子の include にも対応
-function preProcess(filePathAbs, filePaths) {
-    var pathStack = [];
+function preProcess(filePathAbs) {
     var defines = {};
-
-    pathStack.push({
-        includePath: null
-    });
 
     // メインソースファイルのフォルダを現在のプロジェクトフォルダとする
     var entryProject = fso.GetParentFolderName(filePathAbs);
@@ -660,7 +649,7 @@ function preProcess(filePathAbs, filePaths) {
     var templateVariables = { };
 
     try {
-        return preProcess_Recurse(filePathAbs, projectDirectoryFromRoot, filePaths, pathStack, defines, templateVariables);
+        return preProcess_Recurse(filePathAbs, projectDirectoryFromRoot, defines, templateVariables);
     }
     catch (e) {
         if (_.isUndefined(e.lineObj) || _.isUndefined(e.errorMessage)){
