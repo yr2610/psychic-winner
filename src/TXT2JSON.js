@@ -11,8 +11,12 @@ var runInCScript = (function() {
     return (fso.getBaseName(WScript.FullName).toLowerCase() === "cscript");
 })();
 
+function alert(s) {
+    WScript.Echo(s);
+}
+
 function printJSON(json) {
-    WScript.Echo(JSON.stringify(json, undefined, 4));
+    alert(JSON.stringify(json, undefined, 4));
 }
 
 function makeLineinfoString(filePath, lineNum) {
@@ -141,11 +145,6 @@ htmlfile.close();
 
 // プロジェクトフォルダ内のソース置き場
 var sourceDirectory = "source";
-
-var projectDirectoryStack = [];
-
-// メインソースファイルのフォルダを現在のプロジェクトフォルダとする
-projectDirectoryStack.push(fso.GetParentFolderName(filePath));
 
 var includePath = [];
 

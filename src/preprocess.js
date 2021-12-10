@@ -399,18 +399,51 @@ function preProcessConditionalCompile(lines, defines) {
     return dstLines;
 }
 
+function replaceText(s, data) {
+    // XXX: 一旦は正規表現で置換できる程度の仕様にしておく
+    var rep_fn = function(m, k) {
+        if (!(k in data)) {
+            throw k;
+        }
+        return data[k];
+    }
+
+    return s.replace(/\{\{\=\s*([\w\$]+)\s*\}\}/g, rep_fn);
+  
+//    for (;;) {
+//        var templateMatch = s.match(/^(.*)\{\{\=\s*([\w\$]+)\s*\}\}(.*)$/);
+//        if (!templateMatch) {
+//            break;
+//        }
+//        var name = templateMatch[2];
+//        if (!(name in data)) {
+//            throw "no member '" + name + "' in data.";
+//        }
+//        s = templateMatch[1] + data[name] + data[3];
+//    }
+//
+//    return s;
+}
+
 // filename.txt とだけ指定した場合は現在のプロジェクトの source 直下
 // projectname:filename.txt と指定すると外部プロジェクトの source 直下
 // 外部プロジェクトは root を最優先で検索。次に include path から検索（未対応）
 // プロジェクト指定なしの場合 ./filename.txt と指定するとそのファイルからの相対
-function parseIncludeFilePath(s, currentProjectPath, currentFilePath) {
+function parseIncludeFilePath(s, currentProjectPathFromRoot, currentFilePathAbs, variables) {
 
     var IncludeFilePathError = function(errorMessage) {
         this.errorMessage = errorMessage;
     };
 
+    try {
+        s = replaceText(s, variables);
+    }
+    catch (e) {
+        var message = "'" + e + "' を置換できません";
+        throw new IncludeFilePathError(message);
+    }
+
     var includeMatch = s.match(/^((\/)?([^:]+):)?(\.\/)?(.+)$/);
-    //printJSON(includeMatch);
 
     // 無効なパス指定
     if (!includeMatch) {
@@ -419,31 +452,31 @@ function parseIncludeFilePath(s, currentProjectPath, currentFilePath) {
     }
 
     var localPath = includeMatch[5];
-    var projectDirectory = includeMatch[3];
+    var projectDirectoryFromRoot = includeMatch[3];
     // 現在のファイル(include元)からの相対指定
     var relativeFromCurrent = (includeMatch[4] != "");
 
     if (relativeFromCurrent) {
-        if (projectDirectory != "") {
+        if (projectDirectoryFromRoot != "") {
             var message = "外部参照では現在のファイルからの相対指定はできません";
             throw new IncludeFilePathError(message);
         }
-        var directory = fso.GetParentFolderName(currentFilePath);
+        var directoryFromRoot = fso.GetParentFolderName(currentFilePathAbs);
 
         return {
-            projectDirectory: currentProjectPath,
-            sourceDirectory: directory,
-            filePath: fso.BuildPath(directory, localPath)
+            projectDirectory: currentProjectPathFromRoot,
+            sourceDirectory: directoryFromRoot,
+            filePath: fso.BuildPath(directoryFromRoot, localPath)
         };
     }
 
-    if (projectDirectory == "") {
-        projectDirectory = currentProjectPath;
+    // XXX: 当面は root 以下専用
+    if (projectDirectoryFromRoot == "") {
+        projectDirectoryFromRoot = currentProjectPathFromRoot;
     }
     else {
         // root 指定の有無に関係なく root を優先して読む
-        var rootPath = conf.$rootDirectory;
-        projectDirectory = fso.BuildPath(rootPath, projectDirectory);
+        projectDirectoryFromRoot = fso.BuildPath(rootPathAbs, projectDirectoryFromRoot);
 
         var fromRoot = (includeMatch[2] != "");
         if (!fromRoot) {
@@ -452,20 +485,52 @@ function parseIncludeFilePath(s, currentProjectPath, currentFilePath) {
     }
 
     // source 直下からの相対
-    var directory = fso.BuildPath(projectDirectory, sourceDirectory);
+
+    var directoryFromRoot = fso.BuildPath(projectDirectoryFromRoot, sourceDirectory);
+
+    var rootPathAbs = conf.$rootDirectory;
+    var filePathAbs = fso.BuildPath(directoryFromRoot, localPath);
+    filePathAbs = fso.BuildPath(rootPathAbs, filePathAbs);
 
     return {
-        projectDirectory: projectDirectory,
-        sourceDirectory: directory,
-        filePath: fso.BuildPath(directory, localPath)
+        projectDirectory: projectDirectoryFromRoot,
+        sourceDirectory: directoryFromRoot,
+        filePath: filePathAbs
     };
     //WScript.Echo(localPath);
 }
 
+// パラメータは文字列のみの想定
+// 文字列以外を渡された場合の動作は不定
+// variables は include 元で定義済みの変数
+function parseIncludeParameters(s, variables) {
+    if (s == "") {
+        return {};
+    }
+
+    // object を返すには丸括弧が必要らしい
+    var params = eval("({" + s + "})");
+
+    // 各パラメータを template 処理
+    _.forEach(params, function(value, name) {
+        //if (value.indexOf('{{=') == -1) {
+        //    return;
+        //}
+        params[name] = replaceText(value, variables);
+        // TODO: システム変数（$currentProject）の処理
+        // TODO: $currentProject は root から現在の stack top への相対
+    });
+
+    return params;
+}
+
 // filePaths: 含まれるすべてのファイルのパス
-function preProcess_Recurse(filePath, filePaths, pathStack, defines) {
-    filePaths.push(filePath);
-    var parentFolderName = fso.GetParentFolderName(filePath);
+function preProcess_Recurse(filePathAbs, currentProjectDirectoryFromRoot, filePaths, pathStack, defines, templateVariables) {
+    // 上書きする（階層が深い方を優先）
+    templateVariables = _.assign(templateVariables, { $currentProjectDirectory: currentProjectDirectoryFromRoot });
+
+    filePaths.push(filePathAbs);
+    var parentFolderName = fso.GetParentFolderName(filePathAbs);
 
     //_.last(pathStack).parentFolder = parentFolderName;
 
@@ -473,7 +538,7 @@ function preProcess_Recurse(filePath, filePaths, pathStack, defines) {
     // UTF-8 BOM なし 専用
     stream.charset = "UTF-8";
     stream.Open();
-    stream.LoadFromFile(filePath);
+    stream.LoadFromFile(filePathAbs);
     var allLines = stream.ReadText(adReadAll);
     stream.Close();
 
@@ -493,7 +558,7 @@ function preProcess_Recurse(filePath, filePaths, pathStack, defines) {
         var lineObj = {
             line: line,
             lineNum: 1 + lineNum,   // 1 origin
-            filePath: filePath
+            filePath: filePathAbs
         };
         lines.push(lineObj);
     });
@@ -518,30 +583,53 @@ function preProcess_Recurse(filePath, filePaths, pathStack, defines) {
             defines[define.name] = define.value;
         }
 
-        var includeMatch = line.match(/^<<\[\s*(.+)\s*\]$/);
+        var includeMatch = line.match(/^<<\[\s*(.+)\s*\]\s*(\((.+)?\))?$/);
 
         if (includeMatch) {
-            var includeFile = includeMatch[1];
-            var includeFileInfo;
+            var includeFileString = includeMatch[1];
+            var includeOptionString = includeMatch[3];
 
-            var currentProjectDirectory = _.last(projectDirectoryStack);
-            includeFileInfo = parseIncludeFilePath(includeFile, currentProjectDirectory, filePath);
+            try {
+                var includeFileInfo = parseIncludeFilePath(includeFileString, currentProjectDirectoryFromRoot, filePathAbs, templateVariables);
+            }
+            catch (e) {
+                throw new ParseError(e.errorMessage, lineObj); 
+            }
 
-            projectDirectoryStack.push(includeFileInfo.projectDirectory);
+            try {
+                var includeParam = parseIncludeParameters(includeOptionString, templateVariables);
+            }
+            catch(e) {
+                var errorMessage = "include パラメータが不正です。";
+                throw new ParseError(errorMessage, lineObj); 
+            }
+            //printJSON(includeParam);
+
+            // include ファイルに渡す用
+            // 上書きする（階層が深い方を優先）
+            var localTemplateVariables = _.assign(templateVariables, includeParam);
+
+            localTemplateVariables.$currentProjectDirectory = currentProjectDirectoryFromRoot;
+            //printJSON(localTemplateVariables);
+
+            var includeProjectDirectoryFromRoot = includeFileInfo.projectDirectory;
 
             var path = includeFileInfo.filePath;
+            //printJSON(includeFileInfo);
 
             if (!fso.FileExists(path)) {
                 var relativeProjectPath = CL.getRelativePath(conf.$rootDirectory, includeFileInfo.sourceDirectory);
-                var errorMessage = "フォルダ\n" + relativeProjectPath + "\nには\nファイル\n" + includeFile + "\nが存在しません";
+                var relativePath = CL.getRelativePath(includeFileInfo.sourceDirectory, path);
+                //var relativePath = includeFileString;
+
+                var errorMessage = "フォルダ\n" + relativeProjectPath + "\nには\nファイル\n" + relativePath + "\nが存在しません";
                 throw new ParseError(errorMessage, lineObj);
             }
 
-            var includeLines = preProcess_Recurse(path, filePaths, pathStack, defines);
+            var includeLines = preProcess_Recurse(path, includeProjectDirectoryFromRoot, filePaths, pathStack, defines, localTemplateVariables);
             
             dstLines = dstLines.concat(includeLines);
 
-            projectDirectoryStack.pop();
             //pathStack.pop();
             continue;
         }
@@ -553,219 +641,10 @@ function preProcess_Recurse(filePath, filePaths, pathStack, defines) {
     return dstLines;
 }
 
-
-function preProcess_Recurse_old(filePath, lines, filePaths, pathStack) {
-    filePaths.push(filePath);
-    var parentFolderName = fso.GetParentFolderName(filePath);
-
-    _.last(pathStack).parentFolder = parentFolderName;
-
-    stream.Type = adTypeText;
-    // UTF-8 BOM なし 専用
-    stream.charset = "UTF-8";
-    stream.Open();
-    stream.LoadFromFile(filePath);
-    var allLines = stream.ReadText(adReadAll);
-    stream.Close();
-
-    //var path = fso.BuildPath(parentFolderName, image);
-
-    //var lineArray = new ArrayReader(allLines.split(/\r\n|\r|\n/));
-    // 空要素も結果に含めたいのでsplitには正規表現を使わないように
-    var lineArray = allLines.replace(/\r\n|\r/g, "\n").split("\n");
-
-    // 最初に lineObj にしてしまう
-    var lines = [];
-    _.forEach(lineArray, function(line, lineNum) {
-        if (line === "") {
-            return;
-        }
-
-        var lineObj = {
-            line: line,
-            lineNum: 1 + lineNum,   // 1 origin
-            filePath: filePath
-        };
-        lines.push(lineObj);
-    });
-
-    try {
-        lines = parseOneLineComment(lines);
-        lines = parseMultilineComment(lines);
-        lines = preProcessConditionalCompile(lines);
-    }
-    catch (e) {
-        if (_.isUndefined(e.lineObj) || _.isUndefined(e.errorMessage)){
-            throw e;
-        }
-        parseError(e);
-    }
-
-    printJSON(lines);
-    WScript.Quit(1);
-
-    lineArray = new ArrayReader(lines);
-
-    while (!lineArray.atEnd) {
-        var lineObj = lineArray.read();
-        var line = lineObj.line;
-
-        var includeMatch = line.match(/^<<\[\s*(.+)\s*\]$/);
-        if (includeMatch) {
-            var includeFile = includeMatch[1];
-            var path = findIncludeFile(includeFile);
-
-            if (!path) {
-                var errorMessage = "include ファイル\n" + includeFile + "\nが存在しません";
-                throw new ParseError(errorMessage, lineObj);
-            }
-
-            preProcess_Recurse(path, lines, filePaths, pathStack);
-            pathStack.pop();
-            continue;
-        }
-
-
-        // 何のために作ったか不明
-        function getLastLocalPath() {
-            for (var i = pathStack.length - 1; i >= 0; --i) {
-                var path = pathStack[i];
-                if (!path.includePath) {
-                    return path.parentFolder;
-                }
-            }
-            // ここにくるはずはない
-            return null;
-        }
-
-        function findIncludeFileOverride(targetFilePath, pathStack) {
-            // override の候補となるパスを返す
-            function getOverridePaths(targetFilePath) {
-                for (var i = pathStack.length - 1; i >= 0; --i) {
-                    var path = pathStack[i];
-                    if (!path.includePath) {
-                        return pathStack.slice(i);
-                    }
-                }
-                // ここにくるはずはない
-                return null;
-            }
-
-            // include すべきファイルを見つける
-            function findIncludeFilePath(overridePaths) {
-                var lastPath = _.last(overridePaths);
-                var sentinel = {
-                    includePath: (!lastPath.includePath) ? "dummy" : null
-                };
-                overridePaths.push(sentinel);
-                for (var i = 0; i < overridePaths.length - 1; i++) {
-                    var overridePath = overridePaths[i];
-                    if (overridePath.includePath == overridePaths[i + 1].includePath) {
-                        continue;
-                    }
-                    var path = fso.BuildPath(overridePath.parentFolder, targetFilePath);
-                    if (fso.FileExists(path)) {
-                        pathStack.push({
-                            includePath: overridePath.includePath
-                        });
-                        return path;
-                    }
-                }
-                // ここにくるはずはない
-                return null;
-            }
-
-            var overridePaths = getOverridePaths(targetFilePath);
-
-            return findIncludeFilePath(overridePaths);
-        }
-
-        function findIncludeFileIncludePath(targetFilePath, pathStack) {
-            for (var i = 0; i < includePath.length; i++) {
-                var path = fso.BuildPath(includePath[i], targetFilePath);
-                if (fso.FileExists(path)) {
-                    pathStack.push({
-                        includePath: includePath[i]
-                    });
-                    return path;
-                }
-            }
-            // include path 内に指定のファイルが見つからなかった
-            return null;
-        }
-
-        function findIncludeFile(targetFilePath) {
-            // 最初の2文字が '~/' の場合は override 指定とみなす
-            // include 元の同名のファイルを優先して読みに行く
-            // home で最後に include した場所から include 方向に向かって、そのパスで最後に inlcude した場所を検索していく
-            if (targetFilePath.slice(0, 2) == '~/') {
-                targetFilePath = targetFilePath.slice(2);
-                return findIncludeFileOverride(targetFilePath, pathStack);
-            }
-
-            // 最初の1文字が '/' の場合は include path を順に探して最初に見つかったのを採用
-            if (targetFilePath.slice(0, 1) == '/') {
-                targetFilePath = targetFilePath.slice(1);
-                return findIncludeFileIncludePath(targetFilePath, pathStack);
-            }
-
-            // include 元と同じ場所を探す
-            var filePath = fso.BuildPath(parentFolderName, targetFilePath);
-
-            if (fso.FileExists(filePath)) {
-                pathStack.push({
-                    includePath: _.last(pathStack).includePath
-                });
-
-                return filePath;
-            }
-
-            return null;
-        }
-
-        var include = line.match(/^<<\[\s*(.+)\s*\]$/);
-        if (include) {
-            var includeFile = include[1];
-            var path = findIncludeFile(includeFile);
-
-            if (!path) {
-                var errorMessage = "include ファイル\n" + includeFile + "\nが存在しません";
-
-                Error(errorMessage, filePath, lineArray.index);
-            }
-
-//            var path = fso.BuildPath(parentFolderName, include[1]);
-//
-//            // ファイルが存在するか確認
-//            (function () {
-//                var fso = new ActiveXObject("Scripting.FileSystemObject");
-//
-//                if (!fso.FileExists(path)) {
-//                    var relativeFilePath = getRelativePath(path, rootFilePath, fso);
-//                    var errorMessage = "include ファイル\n" + relativeFilePath + "\nが存在しません";
-//
-//                    Error(errorMessage, filePath, lineArray.index);
-//                }
-//            })();
-            
-            preProcess_Recurse(path, lines, filePaths, pathStack);
-            pathStack.pop();
-            continue;
-        }
-
-        var lineObj = {
-            line: line,
-            lineNum: lineArray.index,   // 1 origin
-            filePath: filePath
-        };
-        lines.push(lineObj);
-    }
-}
-
 // preprocess
 // include とかコメント削除とか
 // 入れ子の include にも対応
-function preProcess(filePath, filePaths) {
+function preProcess(filePathAbs, filePaths) {
     var pathStack = [];
     var defines = {};
 
@@ -773,8 +652,15 @@ function preProcess(filePath, filePaths) {
         includePath: null
     });
 
+    // メインソースファイルのフォルダを現在のプロジェクトフォルダとする
+    var entryProject = fso.GetParentFolderName(filePathAbs);
+    var projectDirectoryFromRoot = CL.getRelativePath(conf.$rootDirectory, entryProject);
+
+    // TODO: conf.yaml とかで global な変数を指定できるように
+    var templateVariables = { };
+
     try {
-        return preProcess_Recurse(filePath, filePaths, pathStack, defines);
+        return preProcess_Recurse(filePathAbs, projectDirectoryFromRoot, filePaths, pathStack, defines, templateVariables);
     }
     catch (e) {
         if (_.isUndefined(e.lineObj) || _.isUndefined(e.errorMessage)){
