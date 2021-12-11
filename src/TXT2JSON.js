@@ -417,14 +417,12 @@ function AddNoIdNode(node, filePath, lineNum, newSrcText)
 
 var srcTextsToRewrite = {};
 
-function AddSrcTextToRewrite(filePath, lineNum, newText)
-{
-    if (!(filePath in srcTextsToRewrite))
-    {
+function AddSrcTextToRewrite(filePath, lineNum, newText) {
+    if (!(filePath in srcTextsToRewrite)) {
         srcTextsToRewrite[filePath] = {};
     }
 
-    srcTextsToRewrite[filePath][lineNum] = newText;
+    srcTextsToRewrite[filePath][lineNum - 1] = newText;
 }
 
 function AddChildNode(parent, child)
@@ -2663,48 +2661,46 @@ forAllNodes_Recurse(root, null, -1, function(node, parent, index) {
     }
 });
 
-function binToHex(binStr)
-{
-    var xmldom = new ActiveXObject("Microsoft.XMLDOM");
-    var binObj= xmldom.createElement("binObj");
-
-    binObj.dataType = 'bin.hex';
-    binObj.nodeTypedValue = binStr;
-
-    return String(binObj.text);
-}
+//function binToHex(binStr) {
+//    var xmldom = new ActiveXObject("Microsoft.XMLDOM");
+//    var binObj= xmldom.createElement("binObj");
+//
+//    binObj.dataType = 'bin.hex';
+//    binObj.nodeTypedValue = binStr;
+//
+//    return String(binObj.text);
+//}
 // 文字コードを stream.charset にセットする文字列形式で返す
 // UTF-8 with BOM, UTF-16 BE, LE のみ判定。それ以外は shift JIS を返す
-function GetCharsetFromTextfile(objSt, path)
-{
-    return "UTF-8";
-
-    objSt.type = adTypeBinary;
-    objSt.Open();
-    objSt.LoadFromFile(path);
-    var bytes = objSt.Read(3);
-    var strBOM = binToHex(bytes);
-    objSt.Close();
-
-    if (strBOM === "efbbbf")
-    {
-        return "UTF-8";
-    }
-
-    strBOM = strBOM.substr(0, 4);
-    if (strBOM === "fffe" || strBOM === "feff")
-    {
-        return "UTF-16";
-    }
-
-    return "Shift_JIS";
-}
+//function GetCharsetFromTextfile(objSt, path)
+//{
+//    return "UTF-8";
+//
+//    objSt.type = adTypeBinary;
+//    objSt.Open();
+//    objSt.LoadFromFile(path);
+//    var bytes = objSt.Read(3);
+//    var strBOM = binToHex(bytes);
+//    objSt.Close();
+//
+//    if (strBOM === "efbbbf")
+//    {
+//        return "UTF-8";
+//    }
+//
+//    strBOM = strBOM.substr(0, 4);
+//    if (strBOM === "fffe" || strBOM === "feff")
+//    {
+//        return "UTF-16";
+//    }
+//
+//    return "Shift_JIS";
+//}
 
 (function(){
 // 先に別名でコピーして、それを読みながら、元ファイルを上書きするように
 // 元ファイルをリネームだとエディターで開いてる元ファイルが閉じてしまうので
-for (var filePath in srcTextsToRewrite)
-{
+for (var filePath in srcTextsToRewrite) {
     var rootFileFolderName = fso.GetParentFolderName(rootFilePath);
     var folderName = fso.GetParentFolderName(filePath);
     var backupFolderName = fso.BuildPath(rootFileFolderName, "bak");
@@ -2725,44 +2721,20 @@ for (var filePath in srcTextsToRewrite)
     fso.CopyFile(filePath, backupFilePath);
 
     // バックアップファイルを読んで、元ファイルを直接上書き更新
-    var inputCharset = GetCharsetFromTextfile(stream, backupFilePath);
-    stream.Type = adTypeText;
-    stream.charset = inputCharset;
-    stream.Open();
-    stream.LoadFromFile(filePath);
-
-    var streamOut = new ActiveXObject("ADODB.Stream");
-    streamOut.Type = adTypeText;
-    // 元ファイルの文字コードによらず、UTF-8 with BOM固定で
-    streamOut.charset = "utf-8";
-    streamOut.Open();
+    var s = CL.readTextFileUTF8(filePath);
 
     // バックアップファイルを１行ずつ読んで、srcTextsToRewriteに行番号が存在すればそちらを、なければそのまま書き出し
     // XXX: あらかじめ改行でjoinして１回で書き込んだ場合との速度差はどの程度か？
-    for (var lineNum = 1; !stream.EOS; lineNum++)
-    {
-        var text = stream.ReadText(adReadLine);
-        if (lineNum in srcTextsToRewrite[filePath])
-        {
-            text = srcTextsToRewrite[filePath][lineNum];
+    s = s.split("\n");
+    for (var lineNum = 0; lineNum < s.length; lineNum++) {
+        if (lineNum in srcTextsToRewrite[filePath]) {
+            s[lineNum] = srcTextsToRewrite[filePath][lineNum];
             delete srcTextsToRewrite[filePath][lineNum];
         }
-        streamOut.WriteText(text, adWriteLine);
     }
+    s = s.join("\n");
 
-    stream.Close();
-
-    streamOut.Position = 0;
-    streamOut.Type = adTypeBinary;
-    streamOut.Position = 3;
-    var bytes = streamOut.Read();
-    streamOut.Position = 0;
-    streamOut.SetEOS();
-    streamOut.Write(bytes);
-
-    streamOut.SaveToFile(filePath, adSaveCreateOverWrite);
-    streamOut.Close();
-    streamOut = null;
+    CL.writeTextFileUTF8(s, filePath);
 }
 })();
 
