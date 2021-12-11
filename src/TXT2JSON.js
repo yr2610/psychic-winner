@@ -2725,16 +2725,15 @@ for (var filePath in srcTextsToRewrite) {
 
     // バックアップファイルを１行ずつ読んで、srcTextsToRewriteに行番号が存在すればそちらを、なければそのまま書き出し
     // XXX: あらかじめ改行でjoinして１回で書き込んだ場合との速度差はどの程度か？
-    s = s.split("\n");
-    for (var lineNum = 0; lineNum < s.length; lineNum++) {
-        if (lineNum in srcTextsToRewrite[filePath]) {
-            s[lineNum] = srcTextsToRewrite[filePath][lineNum];
-            delete srcTextsToRewrite[filePath][lineNum];
-        }
-    }
+    s = s.split(/\r\n|\n|\r/);
+    _.forEach(srcTextsToRewrite[filePath], function(text, lineNum) {
+        s[lineNum] = text;
+    });
     s = s.join("\n");
 
     CL.writeTextFileUTF8(s, filePath);
+
+    delete srcTextsToRewrite[filePath];
 }
 })();
 

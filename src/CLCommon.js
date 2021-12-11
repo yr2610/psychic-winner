@@ -28,7 +28,7 @@ CL.writeTextFileUTF8 = function (s, outFilePath) {
 
   s = s.split("\n").join("\r\n"); // メモ帳で開けるように…
 
-  stream.WriteText(s, adWriteLine);
+  stream.WriteText(s, adWriteChar);
 
   stream.Position = 0;
   stream.Type = adTypeBinary;
