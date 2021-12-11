@@ -2848,59 +2848,21 @@ sJson = (function () {
 })();
 */
 
-var fso = new ActiveXObject( "Scripting.FileSystemObject" );
-
-
-//  ファイルを書き込み専用で開く
 var outFilename = fso.GetBaseName(filePath) + ".json";
 var outfilePath = fso.BuildPath(fso.GetParentFolderName(filePath), outFilename);
-/**/
-stream.Type = adTypeText;
-stream.charset = "utf-8";
-stream.Open();
 
-var jsonArray = sJson.split("\n");
-for (var i = 0; i < jsonArray.length; i++)
-{
-    stream.WriteText(jsonArray[i], adWriteLine);
-}
-
-stream.Position = 0;
-stream.Type = adTypeBinary;
-stream.Position = 3;
-var bytes = stream.Read();
-stream.Position = 0;
-stream.SetEOS();
-stream.Write(bytes);
-
-stream.SaveToFile(outfilePath, adSaveCreateOverWrite);
-stream.Close();
-stream = null;
-/*/
-var outfile = fso.OpenTextFile(outfilePath, FORWRITING, true, TRISTATE_FALSE);
-
-var jsonArray = sJson.split("\n");
-for (var i = 0; i < jsonArray.length; i++)
-{
-    outfile.WriteLine(jsonArray[i]);
-}
-
-//  ファイルを閉じる
-outfile.Close();
-/**/
+CL.writeTextFileUTF8(sJson, outfilePath);
 
 if (!runInCScript) {
     WScript.Echo("JSONファイル(" + outFilename + ")を出力しました");
 }
 
 var updatedFiles = "";
-for (var filePath in srcTextsToRewrite)
-{
+for (var filePath in srcTextsToRewrite) {
     updatedFiles += "\n" + fso.GetFileName(filePath);
 }
 
-if (updatedFiles !== "")
-{
+if (updatedFiles !== "") {
     WScript.Echo("以下のソースファイルを更新しました" + updatedFiles);
 }
 
