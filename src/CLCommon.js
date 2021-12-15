@@ -396,6 +396,7 @@ CL.makeBackupFileName = function (filePath, fso) {
 
 // ファイルのバックアップ作成
 // 更新日時をファイル名に追加したような名前でコピーする
+// filePath にディレクトリー付きのパスを渡してもファイル名だけ返す
 CL.makeBackupFile = function (filePath, relativeFolderPath) {
   var fso = new ActiveXObject("Scripting.FileSystemObject");
   var backupFolderPath = fso.GetParentFolderName(filePath);
