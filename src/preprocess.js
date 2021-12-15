@@ -461,13 +461,18 @@ function parseIncludeFilePath(s, currentProjectPathFromRoot, currentFilePathAbs,
             var message = "外部参照では現在のファイルからの相対指定はできません";
             throw new IncludeFilePathError(message);
         }
-        var directoryFromRoot = fso.GetParentFolderName(currentFilePathAbs);
-
-        return {
+        //var directoryFromRoot = fso.GetParentFolderName(currentFilePathAbs);
+        var currentFileDirectoryAbs = fso.GetParentFolderName(currentFilePathAbs);
+        var pathAbs = fso.BuildPath(currentFileDirectoryAbs, localPath);
+        var filePath = absolutePathToProjectLocalPath(pathAbs, currentProjectPathFromRoot);
+        var result = {
             projectDirectory: currentProjectPathFromRoot,
-            sourceDirectory: directoryFromRoot,
-            filePath: fso.BuildPath(directoryFromRoot, localPath)
+            //sourceDirectory: directoryFromRoot,
+            //filePath: fso.BuildPath(directoryFromRoot, localPath)
+            filePath: filePath
         };
+
+        return result;
     }
 
     // XXX: 当面は root 以下専用
@@ -486,17 +491,19 @@ function parseIncludeFilePath(s, currentProjectPathFromRoot, currentFilePathAbs,
 
     // source 直下からの相対
 
-    var directoryFromRoot = fso.BuildPath(projectDirectoryFromRoot, sourceDirectory);
+    //var directoryFromRoot = fso.BuildPath(projectDirectoryFromRoot, sourceDirectoryName);
 
     var rootPathAbs = conf.$rootDirectory;
-    var filePathAbs = fso.BuildPath(directoryFromRoot, localPath);
-    filePathAbs = fso.BuildPath(rootPathAbs, filePathAbs);
+    //var filePathAbs = fso.BuildPath(directoryFromRoot, localPath);
+    //filePathAbs = fso.BuildPath(rootPathAbs, filePathAbs);
 
-    return {
+    var result = {
         projectDirectory: projectDirectoryFromRoot,
-        sourceDirectory: directoryFromRoot,
-        filePath: filePathAbs
+        //sourceDirectory: directoryFromRoot,
+        filePath: localPath
     };
+
+    return result;
     //WScript.Echo(localPath);
 }
 
@@ -525,17 +532,13 @@ function parseIncludeParameters(s, variables) {
 }
 
 // filePaths: 含まれるすべてのファイルのパス
-function preProcess_Recurse(filePathAbs, currentProjectDirectoryFromRoot, defines, templateVariables) {
+function preProcess_Recurse(filePath, currentProjectDirectoryFromRoot, defines, templateVariables) {
     // 上書きする（階層が深い方を優先）
     templateVariables = _.assign(templateVariables, { $currentProjectDirectory: currentProjectDirectoryFromRoot });
 
-    stream.Type = adTypeText;
-    // UTF-8 BOM なし 専用
-    stream.charset = "UTF-8";
-    stream.Open();
-    stream.LoadFromFile(filePathAbs);
-    var allLines = stream.ReadText(adReadAll);
-    stream.Close();
+    var filePathAbs = projectLocalPathToAbsolutePath(filePath, currentProjectDirectoryFromRoot);
+
+    var allLines = CL.readTextFileUTF8(filePathAbs);
 
     //var path = fso.BuildPath(parentFolderName, image);
 
@@ -553,7 +556,8 @@ function preProcess_Recurse(filePathAbs, currentProjectDirectoryFromRoot, define
         var lineObj = {
             line: line,
             lineNum: 1 + lineNum,   // 1 origin
-            filePath: filePathAbs
+            filePath: filePath,
+            projectDirectory: currentProjectDirectoryFromRoot
         };
         lines.push(lineObj);
     });
@@ -610,14 +614,17 @@ function preProcess_Recurse(filePathAbs, currentProjectDirectoryFromRoot, define
             var includeProjectDirectoryFromRoot = includeFileInfo.projectDirectory;
 
             var path = includeFileInfo.filePath;
+            var pathAbs = projectLocalPathToAbsolutePath(path, includeProjectDirectoryFromRoot);
+
             //printJSON(includeFileInfo);
 
-            if (!fso.FileExists(path)) {
-                var relativeProjectPath = CL.getRelativePath(conf.$rootDirectory, includeFileInfo.sourceDirectory);
-                var relativePath = CL.getRelativePath(includeFileInfo.sourceDirectory, path);
+            if (!fso.FileExists(pathAbs)) {
+                var sourceDirectory = fso.BuildPath(includeFileInfo.projectDirectory, sourceDirectoryName);
+                //var relativeProjectPath = CL.getRelativePath(conf.$rootDirectory, includeFileInfo.sourceDirectory);
+                //var relativePath = CL.getRelativePath(includeFileInfo.sourceDirectory, path);
                 //var relativePath = includeFileString;
 
-                var errorMessage = "フォルダ\n" + relativeProjectPath + "\nには\nファイル\n" + relativePath + "\nが存在しません";
+                var errorMessage = "フォルダ\n" + sourceDirectory + "\nには\nファイル\n" + path + "\nが存在しません";
                 throw new ParseError(errorMessage, lineObj);
             }
 
@@ -643,13 +650,14 @@ function preProcess(filePathAbs) {
 
     // メインソースファイルのフォルダを現在のプロジェクトフォルダとする
     var entryProject = fso.GetParentFolderName(filePathAbs);
-    var projectDirectoryFromRoot = CL.getRelativePath(conf.$rootDirectory, entryProject);
+    var projectPathFromRoot = CL.getRelativePath(conf.$rootDirectory, entryProject);
+    var filePath = absolutePathToProjectLocalPath(filePathAbs, projectPathFromRoot);
 
     // TODO: conf.yaml とかで global な変数を指定できるように
     var templateVariables = { };
 
     try {
-        return preProcess_Recurse(filePathAbs, projectDirectoryFromRoot, defines, templateVariables);
+        return preProcess_Recurse(filePath, projectPathFromRoot, defines, templateVariables);
     }
     catch (e) {
         if (_.isUndefined(e.lineObj) || _.isUndefined(e.errorMessage)){

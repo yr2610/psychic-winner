@@ -144,7 +144,13 @@ var performance = htmlfile.parentWindow.performance;
 htmlfile.close();
 
 // プロジェクトフォルダ内のソース置き場
-var sourceDirectory = "source";
+var sourceDirectoryName = "source";
+
+// バックアップ置き場
+var backupDirectoryName = "bak";
+
+// 中間生成ファイル置き場
+var intermediateDirectoryName = "intermediate";
 
 var includePath = [];
 
@@ -394,16 +400,20 @@ stack.push(root);
 var noIdNodes = {};
 
 // tree 構築後じゃないと leaf かどうかの判別ができないのと、入力済の ID 間での重複チェックをしたいので、貯めといて最後に ID を割り当てる
-function AddNoIdNode(node, filePath, lineNum, newSrcText)
-{
-    if (!(filePath in noIdNodes))
-    {
-        noIdNodes[filePath] = [];
+function AddNoIdNode(node, lineObj, lineNum, newSrcText) {
+    var filePath = lineObj.filePath;
+    var projectDirectory = lineObj.projectDirectory;
+    var key = projectDirectory + ":" + filePath;
+
+    if (!(key in noIdNodes)) {
+        noIdNodes[key] = [];
     }
 
-    var data =
-    {
+    var data = {
         node: node,
+
+        lineObj: lineObj,
+
         lineNum: lineNum,
 
         // 書き換え後の文字列
@@ -412,17 +422,35 @@ function AddNoIdNode(node, filePath, lineNum, newSrcText)
         newSrcText: newSrcText
     };
 
-    noIdNodes[filePath].push(data);
+    noIdNodes[key].push(data);
 }
 
 var srcTextsToRewrite = {};
 
-function AddSrcTextToRewrite(filePath, lineNum, newText) {
-    if (!(filePath in srcTextsToRewrite)) {
-        srcTextsToRewrite[filePath] = {};
+function getProjectLocalPath(filePath, projectDirectory) {
+    var projectDirectoryAbs = fso.BuildPath(conf.$rootDirectory, projectDirectory);
+
+    return CL.getRelativePath(projectDirectoryAbs, filePath);
+}
+
+function AddSrcTextToRewrite(noIdLineData, newSrcText) {
+    var lineObj = noIdLineData.lineObj;
+    var filePath = lineObj.filePath;
+    var projectDirectory = lineObj.projectDirectory;
+    //var filePathProjectLocal = getProjectLocalPath(filePath, projectDirectory);
+    var key = projectDirectory + ":" + filePath;
+    var lineNum = noIdLineData.lineNum;
+
+    if (!(key in srcTextsToRewrite)) {
+        srcTextsToRewrite[key] = {
+            filePath: filePath,
+            projectDirectory: projectDirectory,
+            newTexts: {}
+        };
     }
 
-    srcTextsToRewrite[filePath][lineNum - 1] = newText;
+    var newTexts = srcTextsToRewrite[key].newTexts;
+    newTexts[lineNum - 1] = newSrcText;
 }
 
 function AddChildNode(parent, child)
@@ -636,7 +664,7 @@ while (!srcLines.atEnd) {
                 newSrcText += lineObj.comment;
             }
 
-            AddNoIdNode(item, lineObj.filePath, lineObj.lineNum, newSrcText);
+            AddNoIdNode(item, lineObj, lineObj.lineNum, newSrcText);
         }
 
         continue;
@@ -901,7 +929,7 @@ while (!srcLines.atEnd) {
                 newSrcText += lineObj.comment;
             }
 
-            AddNoIdNode(item, lineObj.filePath, lineObj.lineNum, newSrcText);
+            AddNoIdNode(item, lineObj, lineObj.lineNum, newSrcText);
         }
 
         continue;
@@ -1321,7 +1349,7 @@ while (!srcLines.atEnd) {
                     }
                     newSrcText += "[#{uid}]";
 
-                    AddNoIdNode(parentNode, lineObj.filePath, lines[y0].lineNum, newSrcText);
+                    AddNoIdNode(parentNode, lineObj, lines[y0].lineNum, newSrcText);
                 }
                 else
                 {
@@ -1723,45 +1751,43 @@ root.children.forEach(function(element, index, array) {
     }
 });
 
-(function(){
-    for (var filePath in noIdNodes) {
-        // id を付与してファイルに書き出すノードを抽出
-        var infos = noIdNodes[filePath].filter(function(element, index, array) {
-            // H1 ノード
-            if (element.node.kind === kindH && element.node.level === 1) {
-                return true;
-            }
-
-            // leaf ノード
-            // ただし '[', ']' は除外
-            if (element.node.children.length === 0) {
-                return (element.node.text !== '[' && element.node.text !== ']');
-            }
-
-            // alias 参照ノード
-            if (/^\*[A-Za-z_]\w*\(.*\)$/.test(element.node.text.trim())) {
-                return true;
-            }
-
-            return false;
-        });
-
-        for (var i = 0; i < infos.length; i++) {
-            var info = infos[i];
-            var node = info.node;
-            var uidList = FindUidList(node.parent);
-            var uid = createUid(8, uidList);
-            node.id = uid;
-
-            // ID 挿入して書き換え
-            // "{{foo}}" みたいな文法を作ろうとしたら {} に置換されてしまうので、汎用 format ではなく "{uid}" 専用の replace 処理に
-            //var newSrcText = info.newSrcText.format({uid: uid});
-            var newSrcText = info.newSrcText.replace(/\{uid\}/, uid);
-
-            AddSrcTextToRewrite(filePath, info.lineNum, newSrcText);
+_.forEach(noIdNodes, function(infos) {
+    // id を付与してファイルに書き出すノードを抽出
+    infos = infos.filter(function(element, index, array) {
+        // H1 ノード
+        if (element.node.kind === kindH && element.node.level === 1) {
+            return true;
         }
-    }
-})();
+
+        // leaf ノード
+        // ただし '[', ']' は除外
+        if (element.node.children.length === 0) {
+            return (element.node.text !== '[' && element.node.text !== ']');
+        }
+
+        // alias 参照ノード
+        if (/^\*[A-Za-z_]\w*\(.*\)$/.test(element.node.text.trim())) {
+            return true;
+        }
+
+        return false;
+    });
+
+    // TODO: 複数箇所で include されてる時に異なる id が振られないように
+    _.forEach(infos, function(info) {
+        var node = info.node;
+        var uidList = FindUidList(node.parent);
+        var uid = createUid(8, uidList);
+        node.id = uid;
+
+        // ID 挿入して書き換え
+        // "{{foo}}" みたいな文法を作ろうとしたら {} に置換されてしまうので、汎用 format ではなく "{uid}" 専用の replace 処理に
+        //var newSrcText = info.newSrcText.format({uid: uid});
+        var newSrcText = info.newSrcText.replace(/\{uid\}/, uid);
+
+        AddSrcTextToRewrite(info, newSrcText);
+    });
+});
 
 // 配列を展開
 // '[' ']' の node で挟まれた node を配列とみなし、 leaf に ']' ノードの子treeをすべてコピー
@@ -2697,43 +2723,95 @@ forAllNodes_Recurse(root, null, -1, function(node, parent, index) {
 //    return "Shift_JIS";
 //}
 
+function getAbsoluteProjectPath(projectPathFromRoot) {
+    return fso.BuildPath(conf.$rootDirectory, projectPathFromRoot);
+}
+
+function getAbsoluteSourceDirectory(projectPathFromRoot) {
+    var projectPathAbs = getAbsoluteProjectPath(projectPathFromRoot);
+
+    return fso.BuildPath(projectPathAbs, sourceDirectoryName);
+}
+// project local なファイルパスを絶対パスに変換
+function projectLocalPathToAbsolutePath(filePathProjectLocal, projectPathFromRoot) {
+    var sourceDirectoryAbs = getAbsoluteSourceDirectory(projectPathFromRoot);
+
+    return fso.BuildPath(sourceDirectoryAbs, filePathProjectLocal);
+}
+// ソースディレクトリからの相対に変換
+function absolutePathToProjectLocalPath(filePath, projectPathFromRoot) {
+    var sourceDirectoryAbs = getAbsoluteSourceDirectory(projectPathFromRoot);
+
+    return CL.getRelativePath(sourceDirectoryAbs, filePath);
+}
+
+function getAbsoluteBackupDirectory(projectPathFromRoot) {
+    var projectPathAbs = getAbsoluteProjectPath(projectPathFromRoot);
+
+    return fso.BuildPath(projectPathAbs, backupDirectoryName);
+}
+function getAbsoluteBackupPath(filePathProjectLocal, projectPathFromRoot) {
+    var backupDirectoryAbs = getAbsoluteBackupDirectory(projectPathFromRoot);
+
+    return fso.BuildPath(backupDirectoryAbs, filePathProjectLocal);
+}
+
 (function(){
+    var entryFilePath = filePath;
+    var entryProject = fso.GetParentFolderName(entryFilePath);
+    //var entryProjectFromRoot = CL.getRelativePath(conf.$rootDirectory, entryProject);
+
 // 先に別名でコピーして、それを読みながら、元ファイルを上書きするように
 // 元ファイルをリネームだとエディターで開いてる元ファイルが閉じてしまうので
-for (var filePath in srcTextsToRewrite) {
-    var rootFileFolderName = fso.GetParentFolderName(rootFilePath);
+for (var key in srcTextsToRewrite) {
+    var noIdLineData = srcTextsToRewrite[key];
+    //printJSON(noIdLineData);
+    var filePath = noIdLineData.filePath;
+    var projectDirectory = noIdLineData.projectDirectory;
+    var filePathAbs = projectLocalPathToAbsolutePath(filePath, projectDirectory);
+    var entryFileFolderName = fso.GetParentFolderName(rootFilePath);
     var folderName = fso.GetParentFolderName(filePath);
-    var backupFolderName = fso.BuildPath(rootFileFolderName, "bak");
+    //var backupFolderName = fso.BuildPath(entryFileFolderName, "bak");
+    var backupFolderName = getAbsoluteBackupDirectory(projectDirectory);
     backupFolderName = fso.BuildPath(backupFolderName, "txt");
-    if (folderName !== rootFileFolderName) {
-        if (_.startsWith(folderName, rootFileFolderName)) {
-            var backupSubFolderName = folderName.slice(rootFileFolderName.length + 1);
-            backupFolderName = fso.BuildPath(backupFolderName, backupSubFolderName);
-        } else {
-            // XXX: 何かした方が良いんだろうけど、とりあえず何もしない…
-        }
-    }
+
+    // 何やってたか忘れたので一旦コメントアウト
+    //if (folderName !== entryFileFolderName) {
+    //    if (_.startsWith(folderName, entryFileFolderName)) {
+    //        var backupSubFolderName = folderName.slice(entryFileFolderName.length + 1);
+    //        backupFolderName = fso.BuildPath(backupFolderName, backupSubFolderName);
+    //    } else {
+    //        // XXX: 何かした方が良いんだろうけど、とりあえず何もしない…
+    //    }
+    //}
+
+    // 最初から filePath を使えば済む話？
+    var fileDirectoryAbs = fso.GetParentFolderName(filePathAbs);
+    var fileDirectoryFromSource = absolutePathToProjectLocalPath(fileDirectoryAbs, projectDirectory);
+    backupFolderName = fso.BuildPath(backupFolderName, fileDirectoryFromSource);
     CL.createFolder(backupFolderName);
 
-    var backupFileName = CL.makeBackupFileName(filePath, fso);
+    //var backupPath = getAbsoluteBackupPath(filePath, projectDirectory);
+    //alert(filePath + "\n" + projectDirectory + "\n" + backupPath);
+    var backupFileName = CL.makeBackupFileName(filePathAbs, fso);
     var backupFilePath = fso.BuildPath(backupFolderName, backupFileName);
 
-    fso.CopyFile(filePath, backupFilePath);
+    fso.CopyFile(filePathAbs, backupFilePath);
 
     // バックアップファイルを読んで、元ファイルを直接上書き更新
-    var s = CL.readTextFileUTF8(filePath);
+    var s = CL.readTextFileUTF8(filePathAbs);
 
     // バックアップファイルを１行ずつ読んで、srcTextsToRewriteに行番号が存在すればそちらを、なければそのまま書き出し
     // XXX: あらかじめ改行でjoinして１回で書き込んだ場合との速度差はどの程度か？
     s = s.split(/\r\n|\n|\r/);
-    _.forEach(srcTextsToRewrite[filePath], function(text, lineNum) {
-        s[lineNum] = text;
+    _.forEach(noIdLineData.newTexts, function(newSrcText, lineNum) {
+        s[lineNum] = newSrcText;
     });
     s = s.join("\n");
 
-    CL.writeTextFileUTF8(s, filePath);
+    CL.writeTextFileUTF8(s, filePathAbs);
 
-    delete srcTextsToRewrite[filePath];
+    srcTextsToRewrite[key] = null;
 }
 })();
 
@@ -2830,7 +2908,8 @@ if (!runInCScript) {
 
 var updatedFiles = "";
 for (var filePath in srcTextsToRewrite) {
-    updatedFiles += "\n" + fso.GetFileName(filePath);
+    //updatedFiles += "\n" + fso.GetFileName(filePath);
+    updatedFiles += "\n" + filePath;
 }
 
 if (updatedFiles !== "") {
