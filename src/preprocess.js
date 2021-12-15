@@ -467,7 +467,6 @@ function parseIncludeFilePath(s, currentProjectPathFromRoot, currentFilePathAbs,
         var filePath = absolutePathToProjectLocalPath(pathAbs, currentProjectPathFromRoot);
         var result = {
             projectDirectory: currentProjectPathFromRoot,
-            //sourceDirectory: directoryFromRoot,
             //filePath: fso.BuildPath(directoryFromRoot, localPath)
             filePath: filePath
         };
@@ -481,7 +480,7 @@ function parseIncludeFilePath(s, currentProjectPathFromRoot, currentFilePathAbs,
     }
     else {
         // root 指定の有無に関係なく root を優先して読む
-        projectDirectoryFromRoot = fso.BuildPath(rootPathAbs, projectDirectoryFromRoot);
+        //projectDirectoryFromRoot = fso.BuildPath(rootPathAbs, projectDirectoryFromRoot);
 
         var fromRoot = (includeMatch[2] != "");
         if (!fromRoot) {
@@ -493,18 +492,16 @@ function parseIncludeFilePath(s, currentProjectPathFromRoot, currentFilePathAbs,
 
     //var directoryFromRoot = fso.BuildPath(projectDirectoryFromRoot, sourceDirectoryName);
 
-    var rootPathAbs = conf.$rootDirectory;
+    //var rootPathAbs = conf.$rootDirectory;
     //var filePathAbs = fso.BuildPath(directoryFromRoot, localPath);
     //filePathAbs = fso.BuildPath(rootPathAbs, filePathAbs);
 
     var result = {
         projectDirectory: projectDirectoryFromRoot,
-        //sourceDirectory: directoryFromRoot,
         filePath: localPath
     };
 
     return result;
-    //WScript.Echo(localPath);
 }
 
 // パラメータは文字列のみの想定
