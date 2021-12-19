@@ -464,7 +464,7 @@ function parseIncludeFilePath(s, currentProjectPathFromRoot, currentFilePathAbs,
         //var directoryFromRoot = fso.GetParentFolderName(currentFilePathAbs);
         var currentFileDirectoryAbs = fso.GetParentFolderName(currentFilePathAbs);
         var pathAbs = fso.BuildPath(currentFileDirectoryAbs, localPath);
-        var filePath = absolutePathToProjectLocalPath(pathAbs, currentProjectPathFromRoot);
+        var filePath = absolutePathToSourceLocalPath(pathAbs, currentProjectPathFromRoot);
         var result = {
             projectDirectory: currentProjectPathFromRoot,
             //filePath: fso.BuildPath(directoryFromRoot, localPath)
@@ -533,7 +533,8 @@ function preProcess_Recurse(filePath, currentProjectDirectoryFromRoot, defines, 
     // 上書きする（階層が深い方を優先）
     templateVariables = _.assign(templateVariables, { $currentProjectDirectory: currentProjectDirectoryFromRoot });
 
-    var filePathAbs = projectLocalPathToAbsolutePath(filePath, currentProjectDirectoryFromRoot);
+    //alert(currentProjectDirectoryFromRoot);
+    var filePathAbs = directoryLocalPathToAbsolutePath(filePath, currentProjectDirectoryFromRoot, sourceDirectoryName);
 
     var allLines = CL.readTextFileUTF8(filePathAbs);
 
@@ -611,9 +612,7 @@ function preProcess_Recurse(filePath, currentProjectDirectoryFromRoot, defines, 
             var includeProjectDirectoryFromRoot = includeFileInfo.projectDirectory;
 
             var path = includeFileInfo.filePath;
-            var pathAbs = projectLocalPathToAbsolutePath(path, includeProjectDirectoryFromRoot);
-
-            //printJSON(includeFileInfo);
+            var pathAbs = directoryLocalPathToAbsolutePath(path, includeProjectDirectoryFromRoot, sourceDirectoryName);
 
             if (!fso.FileExists(pathAbs)) {
                 var sourceDirectory = fso.BuildPath(includeFileInfo.projectDirectory, sourceDirectoryName);
@@ -648,7 +647,7 @@ function preProcess(filePathAbs) {
     // メインソースファイルのフォルダを現在のプロジェクトフォルダとする
     var entryProject = fso.GetParentFolderName(filePathAbs);
     var projectPathFromRoot = CL.getRelativePath(conf.$rootDirectory, entryProject);
-    var filePath = absolutePathToProjectLocalPath(filePathAbs, projectPathFromRoot);
+    var filePath = absolutePathToSourceLocalPath(filePathAbs, projectPathFromRoot);
 
     // TODO: conf.yaml とかで global な変数を指定できるように
     var templateVariables = { };

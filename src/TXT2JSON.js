@@ -575,24 +575,6 @@ function parseComment(text, projectDirectoryFromRoot, imageDirectory) {
     }
 
     var imageFilePath = imageMatch[1];
-
-    function getAbsoluteImageDirectory(projectPathFromRoot) {
-        var projectPathAbs = getAbsoluteProjectPath(projectPathFromRoot);
-    
-        return fso.BuildPath(projectPathAbs, imageDirectoryName);
-    }
-
-    function imageLocalPathToAbsolutePath(filePathProjectLocal, projectPathFromRoot) {
-        var imageDirectoryAbs = getAbsoluteImageDirectory(projectPathFromRoot);
-    
-        return fso.BuildPath(imageDirectoryAbs, filePathProjectLocal);
-    }
-    
-    function absolutePathToProjectLocalPath(filePath, projectPathFromRoot) {
-        var projectDirectoryAbs = getAbsoluteProjectPath(projectPathFromRoot);
-    
-        return CL.getRelativePath(projectDirectoryAbs, filePath);
-    }
         
     // エントリープロジェクトからの相対パスを求める
     function getImageFilePathFromEntryProject(imageFilePath, projectDirectoryFromRoot, imageDirectory) {
@@ -600,9 +582,9 @@ function parseComment(text, projectDirectoryFromRoot, imageDirectory) {
             imageFilePath = fso.BuildPath(imageDirectory, imageFilePath);
         }
 
-        var path = imageLocalPathToAbsolutePath(imageFilePath, projectDirectoryFromRoot);
+        var path = directoryLocalPathToAbsolutePath(imageFilePath, projectDirectoryFromRoot, imageDirectoryName);
 
-        return absolutePathToProjectLocalPath(path, entryProjectFromRoot);
+        return absolutePathToDirectoryLocalPath(path, entryProjectFromRoot);
     }
 
     imageFilePath = getImageFilePathFromEntryProject(imageFilePath, projectDirectoryFromRoot, imageDirectory);
@@ -2820,22 +2802,36 @@ function getAbsoluteProjectPath(projectPathFromRoot) {
     return fso.BuildPath(conf.$rootDirectory, projectPathFromRoot);
 }
 
-function getAbsoluteSourceDirectory(projectPathFromRoot) {
+function getAbsoluteDirectory(projectPathFromRoot, directoryName) {
     var projectPathAbs = getAbsoluteProjectPath(projectPathFromRoot);
 
-    return fso.BuildPath(projectPathAbs, sourceDirectoryName);
-}
-// project local なファイルパスを絶対パスに変換
-function projectLocalPathToAbsolutePath(filePathProjectLocal, projectPathFromRoot) {
-    var sourceDirectoryAbs = getAbsoluteSourceDirectory(projectPathFromRoot);
+    if (_.isUndefined(directoryName)) {
+        return projectPathAbs;
+    }    
 
-    return fso.BuildPath(sourceDirectoryAbs, filePathProjectLocal);
+    return fso.BuildPath(projectPathAbs, directoryName);
+}
+function getAbsoluteSourceDirectory(projectPathFromRoot) {
+    return getAbsoluteDirectory(projectPathFromRoot, sourceDirectoryName);
+}
+
+// project local なファイルパスを絶対パスに変換
+function directoryLocalPathToAbsolutePath(filePathProjectLocal, projectPathFromRoot, directoryName) {
+    var directoryAbs = getAbsoluteDirectory(projectPathFromRoot, directoryName);
+
+    return fso.BuildPath(directoryAbs, filePathProjectLocal);
+}
+function sourceLocalPathToAbsolutePath(filePathProjectLocal, projectPathFromRoot) {
+    return directoryLocalPathToAbsolutePath(filePathProjectLocal, projectPathFromRoot, sourceDirectoryName);
+}
+function absolutePathToDirectoryLocalPath(filePath, projectPathFromRoot, directoryName) {
+    var directoryAbs = getAbsoluteDirectory(projectPathFromRoot, directoryName);
+
+    return CL.getRelativePath(directoryAbs, filePath);
 }
 // ソースディレクトリからの相対に変換
-function absolutePathToProjectLocalPath(filePath, projectPathFromRoot) {
-    var sourceDirectoryAbs = getAbsoluteSourceDirectory(projectPathFromRoot);
-
-    return CL.getRelativePath(sourceDirectoryAbs, filePath);
+function absolutePathToSourceLocalPath(filePath, projectPathFromRoot) {
+    return absolutePathToDirectoryLocalPath(filePath, projectPathFromRoot, sourceDirectoryName);
 }
 
 function getAbsoluteBackupDirectory(projectPathFromRoot) {
@@ -2858,7 +2854,7 @@ for (var key in srcTextsToRewrite) {
     //printJSON(noIdLineData);
     var filePath = noIdLineData.filePath;
     var projectDirectory = noIdLineData.projectDirectory;
-    var filePathAbs = projectLocalPathToAbsolutePath(filePath, projectDirectory);
+    var filePathAbs = sourceLocalPathToAbsolutePath(filePath, projectDirectory);
     var entryFileFolderName = fso.GetParentFolderName(rootFilePath);
     var folderName = fso.GetParentFolderName(filePath);
     //var backupFolderName = fso.BuildPath(entryFileFolderName, "bak");
@@ -2877,7 +2873,7 @@ for (var key in srcTextsToRewrite) {
 
     // 最初から filePath を使えば済む話？
     var fileDirectoryAbs = fso.GetParentFolderName(filePathAbs);
-    var fileDirectoryFromSource = absolutePathToProjectLocalPath(fileDirectoryAbs, projectDirectory);
+    var fileDirectoryFromSource = absolutePathToSourceLocalPath(fileDirectoryAbs, projectDirectory);
     backupFolderName = fso.BuildPath(backupFolderName, fileDirectoryFromSource);
     CL.createFolder(backupFolderName);
 
