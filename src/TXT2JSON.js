@@ -578,8 +578,13 @@ function parseComment(text, projectDirectoryFromRoot, imageDirectory) {
         
     // エントリープロジェクトからの相対パスを求める
     function getImageFilePathFromEntryProject(imageFilePath, projectDirectoryFromRoot, imageDirectory) {
-        if (imageDirectory) {
-            imageFilePath = fso.BuildPath(imageDirectory, imageFilePath);
+        if (imageFilePath.charAt(0) != "/") {
+            if (imageDirectory) {
+                imageFilePath = fso.BuildPath(imageDirectory, imageFilePath);
+            }
+        }
+        else {
+            imageFilePath = imageFilePath.slice(1);
         }
 
         var path = directoryLocalPathToAbsolutePath(imageFilePath, projectDirectoryFromRoot, imageDirectoryName);
@@ -911,9 +916,8 @@ while (!srcLines.atEnd) {
             text += "\n" + line;
         }
 
-        // FIXME: まず仕様を決める
-        var imageDirectory;
-        //var imageDirectory = nodeH1.variables.imagePath;
+        // FIXME: 仕様を決める
+        var imageDirectory = stack.peek().variables.imagePath;
 
         var commentResult = parseComment(text, lineObj.projectDirectory, imageDirectory);
         var comment;
