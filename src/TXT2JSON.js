@@ -152,6 +152,9 @@ var backupDirectoryName = "bak";
 // 中間生成ファイル置き場
 var intermediateDirectoryName = "intermediate";
 
+// 画像置き場
+var imageDirectoryName = "images";
+
 var includePath = [];
 
 // メインソースファイルのrootフォルダはデフォルトで最優先で探す
@@ -174,6 +177,7 @@ includePath.push(fso.GetParentFolderName(filePath));
     }
 })();
 
+// TODO: conf 読み込む処理はファイル分ける
 var conf = {};
 (function(){
     var confFilePath = "conf.yml";
@@ -302,6 +306,9 @@ var conf = {};
     //WScript.Quit(1);
 })();
 
+var entryFilePath = filePath;
+var entryProject = fso.GetParentFolderName(entryFilePath);
+var entryProjectFromRoot = CL.getRelativePath(conf.$rootDirectory, entryProject);
 
 var allFilePaths = [];
 
@@ -541,6 +548,72 @@ function getDataFromTableRow(srcData, parentNode, tableHeaderIds)
     }
 
     return data;
+}
+
+function parseComment(text, projectDirectoryFromRoot, imageDirectory) {
+    // 複数行テキストに対応するために .+ じゃなくて [\s\S]+
+    var re = /^([\s\S]+)\s+\[\^(.+)\]$/;
+    var commentMatch = text.trim().match(re);
+
+    if (!commentMatch) {
+        return null;
+    }
+
+    var text = commentMatch[1].trim();
+    var comment = commentMatch[2].trim();
+
+    comment = comment.replace(/<br>/gi, "\n");
+    comment = comment.replace(/\\n/gi, "\n");
+
+    var imageMatch = comment.match(/^\!(.+)\!$/);
+
+    if (!imageMatch) {
+        return {
+            text: text,
+            comment: comment
+        };
+    }
+
+    var imageFilePath = imageMatch[1];
+
+    function getAbsoluteImageDirectory(projectPathFromRoot) {
+        var projectPathAbs = getAbsoluteProjectPath(projectPathFromRoot);
+    
+        return fso.BuildPath(projectPathAbs, imageDirectoryName);
+    }
+
+    function imageLocalPathToAbsolutePath(filePathProjectLocal, projectPathFromRoot) {
+        var imageDirectoryAbs = getAbsoluteImageDirectory(projectPathFromRoot);
+    
+        return fso.BuildPath(imageDirectoryAbs, filePathProjectLocal);
+    }
+    
+    function absolutePathToProjectLocalPath(filePath, projectPathFromRoot) {
+        var projectDirectoryAbs = getAbsoluteProjectPath(projectPathFromRoot);
+    
+        return CL.getRelativePath(projectDirectoryAbs, filePath);
+    }
+        
+    // エントリープロジェクトからの相対パスを求める
+    function getImageFilePathFromEntryProject(imageFilePath, projectDirectoryFromRoot, imageDirectory) {
+        if (imageDirectory) {
+            imageFilePath = fso.BuildPath(imageDirectory, imageFilePath);
+        }
+
+        var path = imageLocalPathToAbsolutePath(imageFilePath, projectDirectoryFromRoot);
+
+        return absolutePathToProjectLocalPath(path, entryProjectFromRoot);
+    }
+
+    imageFilePath = getImageFilePathFromEntryProject(imageFilePath, projectDirectoryFromRoot, imageDirectory);
+
+    // TODO: entry file のプロジェクトからの相対パスにする
+    //imageFilePath = fso.BuildPath(fso.GetParentFolderName(filePath), image);
+    
+    return {
+        text: text,
+        imageFilePath: imageFilePath
+    };
 }
 
 //  ファイルの文字データを一行ずつ読む
@@ -856,13 +929,32 @@ while (!srcLines.atEnd) {
             text += "\n" + line;
         }
 
-        var commentMatch = text.trim().match(/^([\s\S]+)\s*\[\^(.+)\]$/);
-        var comment = undefined;
-        if (commentMatch) {
-            text = commentMatch[1].trim();
-            comment = commentMatch[2].trim();
-            comment = comment.replace(/<br>/gi, "\n");
+        // FIXME: まず仕様を決める
+        var imageDirectory;
+        //var imageDirectory = nodeH1.variables.imagePath;
+
+        var commentResult = parseComment(text, lineObj.projectDirectory, imageDirectory);
+        var comment;
+        var imageFilePath;
+        if (commentResult) {
+            text = commentResult.text;
+            comment = commentResult.comment;
+            imageFilePath = commentResult.imageFilePath;
+            //var v = {
+            //    text: commentResult.text,
+            //    comment: commentResult.comment,
+            //    imageFilePath: commentResult.imageFilePath
+            //};
+            //printJSON(v);
         }
+
+        //var commentMatch = text.trim().match(/^([\s\S]+)\s*\[\^(.+)\]$/);
+        //var comment = undefined;
+        //if (commentMatch) {
+        //    text = commentMatch[1].trim();
+        //    comment = commentMatch[2].trim();
+        //    comment = comment.replace(/<br>/gi, "\n");
+        //}
 
         // table 形式でデータを記述できるように
         var td = text.match(/^([^\|]+)\|(.*)\|$/);
@@ -903,6 +995,7 @@ while (!srcLines.atEnd) {
             text: text,
             tableData: data,
             comment: comment,
+            imageFilePath: imageFilePath,
             initialValues: initialValues,
             attributes: attributes,
             url: url,
@@ -2757,9 +2850,6 @@ function getAbsoluteBackupPath(filePathProjectLocal, projectPathFromRoot) {
 }
 
 (function(){
-    var entryFilePath = filePath;
-    var entryProject = fso.GetParentFolderName(entryFilePath);
-    //var entryProjectFromRoot = CL.getRelativePath(conf.$rootDirectory, entryProject);
 
 // 先に別名でコピーして、それを読みながら、元ファイルを上書きするように
 // 元ファイルをリネームだとエディターで開いてる元ファイルが閉じてしまうので

@@ -378,21 +378,21 @@ excel.ScreenUpdating = false;
 
 var book = openBook(cacheFilePath, false);
 
-var srcTextLastModifiedDate = (function(){
-    var maxTime = 0;
-    var newestDate = null;
-    for (var i = 0; i < root.sourceFiles.length; i++)
-    {
-        var date = new Date(root.sourceFiles[i].dateLastModified);
-        var time = date.getTime();
-        if (time > maxTime)
-        {
-            maxTime = time;
-            newestDate = date;
-        }
-    }
-    return newestDate;
-})();
+//var srcTextLastModifiedDate = (function(){
+//    var maxTime = 0;
+//    var newestDate = null;
+//    for (var i = 0; i < root.sourceFiles.length; i++)
+//    {
+//        var date = new Date(root.sourceFiles[i].dateLastModified);
+//        var time = date.getTime();
+//        if (time > maxTime)
+//        {
+//            maxTime = time;
+//            newestDate = date;
+//        }
+//    }
+//    return newestDate;
+//})();
 
 // TODO: 複数のタイプから選択できるようにしたい（ソースファイル内でシート毎に指定）
 var templateSheet = book.Worksheets("checksheet");    // XXX:
@@ -984,36 +984,24 @@ nodeUL: {
             }
         })();
 
-        if (node.comment)
-        {
-            // コメントが画像ファイル名ならコメントに画像を貼り付ける
-            // 画像とコメントとの併用は不可
-            //if (/^.+\.(jpg|jpeg|png|gif)$/i.test(node.comment))
-            var imageMatch = node.comment.match(/^\!(.+)\!$/);
-            if (imageMatch) {
-                var image = imageMatch[1];
-                if (imagePath) {
-                    image = imagePath + "/" + image;
-                }
+        // 画像とコメントとの併用は不可
+        if (node.imageFilePath) {
+            // entry project からの相対パス
+            var path = fso.BuildPath(fso.GetParentFolderName(filePath), node.imageFilePath);
 
-                // ソースファイルからの相対パスにする
-                var path = fso.BuildPath(fso.GetParentFolderName(filePath), image);
-
-                addPictureAsComment(cell, path);
+            addPictureAsComment(cell, path);
+        }
+        else if (node.comment) {
+            try {
+                cell.AddComment(node.comment);
+            } catch (e) {
+                // XXX: 何か謎のエラーが出ることがあるので、対処
+                // XXX: エラーの原因はまったくの不明
+                // XXX: 対処といっても、いろいろやってみて、たまたまうまくいったというだけ。ちゃんとした解決法ではない。何かの拍子にまたエラーになるかも
+                cell.ClearComments();
+                cell.AddComment(node.comment);
             }
-            else
-            {
-                try {
-                    cell.AddComment(node.comment);
-                } catch (e) {
-                    // XXX: 何か謎のエラーが出ることがあるので、対処
-                    // XXX: エラーの原因はまったくの不明
-                    // XXX: 対処といっても、いろいろやってみて、たまたまうまくいったというだけ。ちゃんとした解決法ではない。何かの拍子にまたエラーになるかも
-                    cell.ClearComments();
-                    cell.AddComment(node.comment);
-                }
-                cell.Comment.Shape.TextFrame.AutoSize = true;
-            }
+            cell.Comment.Shape.TextFrame.AutoSize = true;
         }
 
         if (node.url)
