@@ -277,6 +277,13 @@ stack.push(root);
 
 })();
 
+// root local な project path から project path local なパスを取得
+function getProjectLocalPath(filePath, projectDirectory) {
+    var projectDirectoryAbs = fso.BuildPath(conf.$rootDirectory, projectDirectory);
+
+    return CL.getRelativePath(projectDirectoryAbs, filePath);
+}
+
 // IDがふられてないノード
 var noIdNodes = {};
 
@@ -308,12 +315,6 @@ function AddNoIdNode(node, lineObj, lineNum, newSrcText) {
 
 var srcTextsToRewrite = {};
 
-function getProjectLocalPath(filePath, projectDirectory) {
-    var projectDirectoryAbs = fso.BuildPath(conf.$rootDirectory, projectDirectory);
-
-    return CL.getRelativePath(projectDirectoryAbs, filePath);
-}
-
 function AddSrcTextToRewrite(noIdLineData, newSrcText) {
     var lineObj = noIdLineData.lineObj;
     var filePath = lineObj.filePath;
@@ -334,20 +335,16 @@ function AddSrcTextToRewrite(noIdLineData, newSrcText) {
     newTexts[lineNum - 1] = newSrcText;
 }
 
-function AddChildNode(parent, child)
-{
+function AddChildNode(parent, child) {
     parent.children.push(child);
     child.parent = parent;
 }
 
 // 一番近い親を返す
 // 自分が存在する前に使いたい都合上、parentとなるnodeを渡す（渡したnodeも検索対象）仕様
-function FindParentNode(parent, fun)
-{
-    for (; parent; parent = parent.parent)
-    {
-        if (fun(parent))
-        {
+function FindParentNode(parent, fun) {
+    for (; parent; parent = parent.parent) {
+        if (fun(parent)) {
             return parent;
         }
     }
@@ -355,10 +352,8 @@ function FindParentNode(parent, fun)
 }
 
 // 一番近い親の uidList を返す
-function FindUidList(parent)
-{
-    var node = FindParentNode(parent, function(node)
-    {
+function FindUidList(parent) {
+    var node = FindParentNode(parent, function(node) {
         return node.uidList;
     });
 
@@ -366,19 +361,16 @@ function FindUidList(parent)
 }
 
 // tableHeaders 内の ID で最小のものが一番左として連番で検索
-function getDataFromTableRow(srcData, parentNode, tableHeaderIds)
-{
+function getDataFromTableRow(srcData, parentNode, tableHeaderIds) {
     // data を h1 の tableHeaders の番号に合わせて作り直す
     var data = [];
 
     // H1は確実に見つかるものとしてOK
-    var h1Node = FindParentNode(parentNode, function(node)
-    {
+    var h1Node = FindParentNode(parentNode, function(node) {
         return (node.kind === kindH && node.level === 1);
     });
 
-    if (typeof tableHeaderIds === 'undefined')
-    {
+    if (typeof tableHeaderIds === 'undefined') {
         /**
         // tableHeaders 内の ID で最小のものが一番左として連番の値
         var minNumber = Infinity;
@@ -392,8 +384,7 @@ function getDataFromTableRow(srcData, parentNode, tableHeaderIds)
         /**/
 
         tableHeaderIds = [];
-        for (var i = 0; i < srcData.length; i++)
-        {
+        for (var i = 0; i < srcData.length; i++) {
             tableHeaderIds[i] = minNumber + i;
         }
     }
@@ -477,131 +468,151 @@ function parseComment(text, projectDirectoryFromRoot, imageDirectory) {
     };
 }
 
+function parseHeading(lineObj) {
+    var line = lineObj.line;
+    var h = line.match(/^(#+)\s+(.*)$/);
+
+    if (!h) {
+        return null;
+    }
+
+    var level = h[1].length;
+    var text = h[2];
+
+    while (stack.peek().kind != kindH || stack.peek().level >= level) {
+        stack.pop();
+    }
+
+    var uid = undefined;
+    var uidList = undefined;
+    var tableHeaders = undefined;
+    var url = undefined;
+    if (level === 1) {
+        var uidMatch = text.match(/^\[#([\w\-]+)\]\s*(.+)$/);
+        if (fResetId) {
+            uidMatch = null;
+        }
+        if (uidMatch) {
+            uid = uidMatch[1];
+            text = uidMatch[2];
+
+            var uidListH1 = FindUidList(stack.peek());
+            if (uid in uidListH1) {
+                (function(){
+                    var uidInfo0 = uidListH1[uid];
+                    var errorMessage = "ID '#" + uid + "' が重複しています";
+                    errorMessage += makeLineinfoString(uidInfo0.filePath, uidInfo0.lineNum);
+                    errorMessage += makeLineinfoString(lineObj.filePath, lineObj.lineNum);
+
+                    throw new ParseError(errorMessage);
+                })();
+            }
+            else {
+                uidListH1[uid] = lineObj;
+            }
+        }
+
+        // シート内での重複だけ確認したいのでここでクリア
+        uidList = {};
+
+        tableHeaders = [];
+    }
+    else {
+        while (/.*\s\+\s*$/.test(text)) {
+            // 改行の次の行の行頭のスペースは無視するように
+            // 厳密にはインデントが揃ってるかちゃんとみるべきだけど、そこまでやるつもりはない
+            line = _.trimLeft(srcLines.read().line);
+            text = _.trimRight(_.trimRight(text).slice(0, -1));
+            text += "\n" + line;
+        }
+
+        // １行のみ、行全体以外は対応しない
+        var link = text.trim().match(/^\[(.+)\]\((.+)\)$/);
+        if (link) {
+            text = link[1].trim();
+            url = link[2].trim();
+        }
+    }
+
+    text = text.trim();
+
+    if (text.length > 31) {
+        var errorMessage = "シート名が31文字を超えています";
+
+        throw new ParseError(errorMessage, lineObj);
+    }
+    if (/[\:\\\?\[\]\/\*：￥？［］／＊]/g.test(text)) {
+        var errorMessage = "シート名に使用できない文字が含まれています"
+        + "\n\nシート名には全角、半角ともに次の文字は使えません"
+        + "\n1 ）コロン        ："
+        + "\n2 ）円記号        ￥"
+        + "\n3 ）疑問符        ？"
+        + "\n4 ）角カッコ      [ ]"
+        + "\n5 ）スラッシュ     /"
+        + "\n6 ）アスタリスク  ＊";
+
+        throw new ParseError(errorMessage, lineObj);
+    }
+    if (_.find(root.children, function(item) {
+        return item.text == text;
+    })) {
+        var errorMessage = "シート名「" + text + "」はすでに使われています";
+
+        throw new ParseError(errorMessage, lineObj);
+    }
+
+    var item = {
+        kind: kindH,
+        level: level,
+        id: uid,
+        text: text,
+        tableHeaders: tableHeaders,
+        tableHeadersNonInputArea: [],
+        url: url,
+        variables: {},
+        children: [],
+
+        // 以下はJSON出力前に削除する
+        // UID重複チェック用
+        // 「複数人で１つのファイルを作成（ID自動生成）してマージしたら衝突」は考慮しなくて良いぐらいの確率だけど、「IDごとコピペして重複」が高頻度で発生する恐れがあるので
+        uidList: uidList,
+        lineObj: lineObj
+    };
+    AddChildNode(stack.peek(), item);
+    stack.push(item);
+    //WScript.Echo(item.level + "\n" + item.text);
+
+    if (fResetId ||
+        level === 1 && !uid) {
+        // tree構築後にIDをふる
+        var newSrcText = lineObj.line;
+        var match = newSrcText.match(/^(#+)(?: \[#[\w\-]+\])?(.*)$/);
+
+        // ID 挿入して書き換え
+        newSrcText = match[1] + " [#{uid}]" + match[2];
+
+        if (!_.isUndefined(lineObj.comment)) {
+            newSrcText += lineObj.comment;
+        }
+
+        AddNoIdNode(item, lineObj, lineObj.lineNum, newSrcText);
+    }
+
+    return h;
+}
+
 //  ファイルの文字データを一行ずつ読む
 while (!srcLines.atEnd) {
     var lineObj = srcLines.read();
     var line = lineObj.line;
 
-    var h = line.match(/^(#+)\s+(.*)$/);
-    if (h) {
-        var level = h[1].length;
-        var text = h[2];
-
-        while (stack.peek().kind != kindH || stack.peek().level >= level) {
-            stack.pop();
+    try {
+        if (parseHeading(lineObj)) {
+            continue;
         }
-
-        var uid = undefined;
-        var uidList = undefined;
-        var tableHeaders = undefined;
-        var url = undefined;
-        if (level === 1) {
-            var uidMatch = text.match(/^\[#([\w\-]+)\]\s*(.+)$/);
-            if (fResetId) {
-                uidMatch = null;
-            }
-            if (uidMatch) {
-                uid = uidMatch[1];
-                text = uidMatch[2];
-
-                var uidListH1 = FindUidList(stack.peek());
-                if (uid in uidListH1)
-                {(function(){
-                    var uidInfo0 = uidListH1[uid];
-                    var errorMessage = "ID '#" + uid + "' が重複しています";
-                    errorMessage += makeLineinfoString(uidInfo0.filePath, uidInfo0.lineNum);
-                    errorMessage += makeLineinfoString(lineObj.filePath, lineObj.lineNum);
-                    Error(errorMessage);
-                })();}
-                else {
-                    uidListH1[uid] = lineObj;
-                }
-            }
-
-            // シート内での重複だけ確認したいのでここでクリア
-            uidList = {};
-
-            tableHeaders = [];
-        }
-        else {
-            while (/.*\s\+\s*$/.test(text)) {
-                // 改行の次の行の行頭のスペースは無視するように
-                // 厳密にはインデントが揃ってるかちゃんとみるべきだけど、そこまでやるつもりはない
-                line = _.trimLeft(srcLines.read().line);
-                text = _.trimRight(_.trimRight(text).slice(0, -1));
-                text += "\n" + line;
-            }
-
-            // １行のみ、行全体以外は対応しない
-            var link = text.trim().match(/^\[(.+)\]\((.+)\)$/);
-            if (link) {
-                text = link[1].trim();
-                url = link[2].trim();
-            }
-        }
-
-        text = text.trim();
-
-        if (text.length > 31) {
-            var errorMessage = "シート名が31文字を超えています";
-            Error(errorMessage, lineObj.filePath, lineObj.lineNum);
-        }
-        if (/[\:\\\?\[\]\/\*：￥？［］／＊]/g.test(text)) {
-            var errorMessage = "シート名に使用できない文字が含まれています"
-            + "\n\nシート名には全角、半角ともに次の文字は使えません"
-            + "\n1 ）コロン        ："
-            + "\n2 ）円記号        ￥"
-            + "\n3 ）疑問符        ？"
-            + "\n4 ）角カッコ      [ ]"
-            + "\n5 ）スラッシュ     /"
-            + "\n6 ）アスタリスク  ＊";
-            Error(errorMessage, lineObj.filePath, lineObj.lineNum);
-        }
-        if (_.find(root.children, function(item) {
-            return item.text == text;
-        })) {
-            var errorMessage = "シート名「" + text + "」はすでに使われています";
-            Error(errorMessage, lineObj.filePath, lineObj.lineNum);
-        }
-
-        var item = {
-            kind: kindH,
-            level: level,
-            id: uid,
-            text: text,
-            tableHeaders: tableHeaders,
-            tableHeadersNonInputArea: [],
-            url: url,
-            variables: {},
-            children: [],
-
-            // 以下はJSON出力前に削除する
-            // UID重複チェック用
-            // 「複数人で１つのファイルを作成（ID自動生成）してマージしたら衝突」は考慮しなくて良いぐらいの確率だけど、「IDごとコピペして重複」が高頻度で発生する恐れがあるので
-            uidList: uidList,
-            lineObj: lineObj
-        };
-        AddChildNode(stack.peek(), item);
-        stack.push(item);
-        //WScript.Echo(item.level + "\n" + item.text);
-
-        if (fResetId ||
-            level === 1 && !uid) {
-            // tree構築後にIDをふる
-            var newSrcText = lineObj.line;
-            var match = newSrcText.match(/^(#+)(?: \[#[\w\-]+\])?(.*)$/);
-
-            // ID 挿入して書き換え
-            newSrcText = match[1] + " [#{uid}]" + match[2];
-
-            if (!_.isUndefined(lineObj.comment)) {
-                newSrcText += lineObj.comment;
-            }
-
-            AddNoIdNode(item, lineObj, lineObj.lineNum, newSrcText);
-        }
-
-        continue;
+    }
+    catch (e) {
+        parseError(e);
     }
 
     // 行頭に全角スペースがないかのチェック
@@ -611,8 +622,7 @@ while (!srcLines.atEnd) {
             return;
         }
         var regex = /　/g;
-        if (regex.test(fullwidthSpaceMatch[1]))
-        {
+        if (regex.test(fullwidthSpaceMatch[1])) {
             var errorMessage = "行頭に全角スペースが含まれています";
             Error(errorMessage, lineObj.filePath, lineObj.lineNum);
         }
@@ -624,8 +634,7 @@ while (!srcLines.atEnd) {
             return;
         }
         var regex = /^\s+/;
-        if (!regex.test(spaceMatch[1]))
-        {
+        if (!regex.test(spaceMatch[1])) {
             var errorMessage = "行頭の記号の後ろに半角スペースが必要です";
             Error(errorMessage, lineObj.filePath, lineObj.lineNum);
         }
