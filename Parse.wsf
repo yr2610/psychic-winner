@@ -13,6 +13,7 @@
     <script language="JavaScript" src="src/constants.js"></script>
     <script language="JavaScript" src="src/CLCommon.js"></script>
     <script language="JavaScript" src="src/preprocess.js"></script>
+    <script language="JavaScript" src="src/readconf.js"></script>
     <script language="JavaScript" src="src/TXT2JSON.js"></script>
 </job>
 </package>
