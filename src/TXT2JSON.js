@@ -601,20 +601,7 @@ function parseHeading(lineObj) {
     return h;
 }
 
-//  ファイルの文字データを一行ずつ読む
-while (!srcLines.atEnd) {
-    var lineObj = srcLines.read();
-    var line = lineObj.line;
-
-    try {
-        if (parseHeading(lineObj)) {
-            continue;
-        }
-    }
-    catch (e) {
-        parseError(e);
-    }
-
+function parseUnorderedList(lineObj) {
     // 行頭に全角スペースがないかのチェック
     (function () {
         var fullwidthSpaceMatch = line.match(/^([\s　]+).*$/);
@@ -636,7 +623,8 @@ while (!srcLines.atEnd) {
         var regex = /^\s+/;
         if (!regex.test(spaceMatch[1])) {
             var errorMessage = "行頭の記号の後ろに半角スペースが必要です";
-            Error(errorMessage, lineObj.filePath, lineObj.lineNum);
+
+            throw new ParseError(errorMessage, lineObj);
         }
     }
     checkSpaceAfterMark(/^#+(.+)$/);
@@ -644,257 +632,279 @@ while (!srcLines.atEnd) {
     checkSpaceAfterMark(/^\s*\d+\.(.+)$/);
 
     var ul = line.match(/^(\s*)([\*\+\-])\s+(.*)$/);
-    if (ul) {
-        var indent = ul[1].length;
-        var text = ul[3];
-        var marker = ul[2];
 
-        while (stack.peek().kind == kindUL && stack.peek().indent >= indent) {
-            stack.pop();
+    if (!ul) {
+        return null;
+    }
+
+    var indent = ul[1].length;
+    var text = ul[3];
+    var marker = ul[2];
+
+    while (stack.peek().kind == kindUL && stack.peek().indent >= indent) {
+        stack.pop();
+    }
+
+    var uidMatch = text.match(/^\[#([\w\-]+)\]\s+(.+)$/);
+    var uid = undefined;
+    if (uidMatch) {
+        uid = uidMatch[1];
+        text = uidMatch[2];
+        {(function(){
+            var uidList = FindUidList(stack.peek());
+            if (uid in uidList) {
+                var uidInfo0 = uidList[uid];
+                var errorMessage = "ID '#" + uid + "' が重複しています";
+                errorMessage += makeLineinfoString(uidInfo0.filePath, uidInfo0.lineNum);
+                errorMessage += makeLineinfoString(lineObj.filePath, lineObj.lineNum);
+
+                throw new ParseError(errorMessage);
+            }
+            else {
+                uidList[uid] = lineObj;
+            }
+        })();}
+    }
+
+    var attributes = void 0;
+    while (true) {
+        var attributeMatch = text.match(/^\s*\<([A-Za-z_]\w*)\>\(([^\)]+)\)\s*(.+)$/);
+        if (attributeMatch === null) {
+            break;
         }
+        var name = attributeMatch[1];
+        var value = attributeMatch[2];
+        text = attributeMatch[3];
 
-        var uidMatch = text.match(/^\[#([\w\-]+)\]\s+(.+)$/);
-        var uid = undefined;
-        if (uidMatch) {
-            uid = uidMatch[1];
-            text = uidMatch[2];
-            {(function(){
-                var uidList = FindUidList(stack.peek());
-                if (uid in uidList) {
-                    var uidInfo0 = uidList[uid];
-                    var errorMessage = "ID '#" + uid + "' が重複しています";
-                    errorMessage += makeLineinfoString(uidInfo0.filePath, uidInfo0.lineNum);
-                    errorMessage += makeLineinfoString(lineObj.filePath, lineObj.lineNum);
-                    Error(errorMessage);
-                }
-                else {
-                    uidList[uid] = lineObj;
-                }
-            })();}
+        if (_.isUndefined(attributes)) {
+            attributes = {};
         }
+        attributes[name] = value;
+    }
 
-        var attributes = void 0;
-        while (true) {
-            var attributeMatch = text.match(/^\s*\<([A-Za-z_]\w*)\>\(([^\)]+)\)\s*(.+)$/);
-            if (attributeMatch === null) {
-                break;
-            }
-            var name = attributeMatch[1];
-            var value = attributeMatch[2];
-            text = attributeMatch[3];
 
-            if (_.isUndefined(attributes)) {
-                attributes = {};
-            }
-            attributes[name] = value;
+    // TODO: leaf 以外で initialValues が設定されていたら削除しておく?
+    var initialValues = void 0;
+
+    // 旧仕様も一応残しておく
+    while (true) {
+        var initialValueMatch = text.match(/^\s*\[#([A-Za-z_]\w*)\]\(([^\)]+)\)\s*(.+)$/);
+        if (initialValueMatch === null) {
+            break;
         }
+        var name = initialValueMatch[1];
+        var value = initialValueMatch[2];
+        text = initialValueMatch[3];
 
-
-        // TODO: leaf 以外で initialValues が設定されていたら削除しておく?
-        var initialValues = void 0;
-
-        // 旧仕様も一応残しておく
-        while (true) {
-            var initialValueMatch = text.match(/^\s*\[#([A-Za-z_]\w*)\]\(([^\)]+)\)\s*(.+)$/);
-            if (initialValueMatch === null) {
-                break;
-            }
-            var name = initialValueMatch[1];
-            var value = initialValueMatch[2];
-            text = initialValueMatch[3];
-
-            if (_.isUndefined(initialValues)) {
-                initialValues = {};
-            }
-            initialValues[name] = value;
-        }
-
-        function getLowestColumnNames() {
-            for (var i = stack.__a.length - 1; i >= 0; i--) {
-                var elem = stack.__a[i];
-                if (_.isUndefined(elem.columnNames)) {
-                    continue;
-                }
-                return {
-                    columnNames: elem.columnNames,
-                    defaultColumnValues: elem.defaultColumnValues
-                };
-            }
-            return null;
-        }
-
-        // (foo: 0, bar: "baz") 形式の初期値設定
-        (function() {
-            var parse = parseColumnValues(text, true);
-            if (parse === null) {
-                return;
-            }
-
-            text = parse.remain;
-
-            if (_.isUndefined(initialValues)) {
-                initialValues = {};
-            }
-
-            var columnNames;
-            var lowestColumnNames = getLowestColumnNames();
-            if (lowestColumnNames !== null) {
-                columnNames = lowestColumnNames.columnNames;
-            }
-
-            parse.columnValues.forEach(function(param, index) {
-                var value = _.isUndefined(param.value) ? null : param.value;
-                if (!_.isUndefined(param.key)) {
-                    initialValues[param.key] = value;
-                    return;
-                }
-                if (_.isUndefined(columnNames)) {
-                    var errorMessage = "列名リストが宣言されていません。";
-                    Error(errorMessage, lineObj.filePath, lineObj.lineNum);
-                }
-                if (index >= columnNames.length) {
-                    var errorMessage = "列の初期値が列名リストの範囲外に指定されています。";
-                    Error(errorMessage, lineObj.filePath, lineObj.lineNum);
-                }
-                var key = columnNames[index];
-                initialValues[key] = value;
-            });
-            return;
-
-            var match = text.match(/^\s*\(([^\)]+)\)\s*(.+)$/);
-            if (match === null) {
-                // TODO: デフォルト値が設定されていれば指定がなくてもセット
-                return;
-            }
-            text = match[2];
+        if (_.isUndefined(initialValues)) {
             initialValues = {};
-            var params = match[1].split(',');
-            var columnNameIndex = 0;
-            params.forEach(function(param) {
-                param = _.trim(param);
-                var nameValueMatch = param.match(/^([A-Za-z_]\w*)\s*:\s(.+)$/);
-                if (nameValueMatch) {
-                    var name = nameValueMatch[1];
-                    var value = nameValueMatch[2];
-                    initialValues[name] = value;
-                    return;
-                }
-                // TODO: stackから上にさかのぼって columnNames を見つける
-                var columnNames = [];
-                if (columnNameIndex >= columnNames.length) {
-                    // TODO: 範囲外エラー
-                }
-                initialValues[columnNames[columnNameIndex]] = param;
-                // TODO: ダブルクォーテーション対応させる
-                columnNameIndex++;
-            });
-        })();
-
-
-        while (/.*\s\+\s*$/.test(text)) {
-            // 改行の次の行の行頭のスペースは無視するように
-            // 厳密にはインデントが揃ってるかちゃんとみるべきだけど、そこまでやるつもりはない
-            line = _.trimLeft(srcLines.read().line);
-            text = _.trimRight(_.trimRight(text).slice(0, -1));
-            text += "\n" + line;
         }
+        initialValues[name] = value;
+    }
 
-        // FIXME: 仕様を決める
-        var imageDirectory = stack.peek().variables.imagePath;
-
-        var commentResult = parseComment(text, lineObj.projectDirectory, imageDirectory);
-        var comment;
-        var imageFilePath;
-        if (commentResult) {
-            text = commentResult.text;
-            comment = commentResult.comment;
-            imageFilePath = commentResult.imageFilePath;
-            //var v = {
-            //    text: commentResult.text,
-            //    comment: commentResult.comment,
-            //    imageFilePath: commentResult.imageFilePath
-            //};
-            //printJSON(v);
-        }
-
-        //var commentMatch = text.trim().match(/^([\s\S]+)\s*\[\^(.+)\]$/);
-        //var comment = undefined;
-        //if (commentMatch) {
-        //    text = commentMatch[1].trim();
-        //    comment = commentMatch[2].trim();
-        //    comment = comment.replace(/<br>/gi, "\n");
-        //}
-
-        // table 形式でデータを記述できるように
-        var td = text.match(/^([^\|]+)\|(.*)\|$/);
-        var data = undefined;
-        if (td) {
-            // TODO: 画像対応
-            text = td[1].trim();
-            data = td[2].split("|");
-            for (var i = 0; i < data.length; i++) {
-                data[i] = data[i].trim();
+    function getLowestColumnNames() {
+        for (var i = stack.__a.length - 1; i >= 0; i--) {
+            var elem = stack.__a[i];
+            if (_.isUndefined(elem.columnNames)) {
+                continue;
             }
+            return {
+                columnNames: elem.columnNames,
+                defaultColumnValues: elem.defaultColumnValues
+            };
+        }
+        return null;
+    }
 
-            data = getDataFromTableRow(data, stack.peek());
+    // (foo: 0, bar: "baz") 形式の初期値設定
+    (function() {
+        var parse = parseColumnValues(text, true);
+        if (parse === null) {
+            return;
+        }
 
-            if (!data) {
-                var errorMessage = "シートに該当IDの確認欄がありません";
-                Error(errorMessage, lineObj.filePath, lineObj.lineNum);
+        text = parse.remain;
+
+        if (_.isUndefined(initialValues)) {
+            initialValues = {};
+        }
+
+        var columnNames;
+        var lowestColumnNames = getLowestColumnNames();
+        if (lowestColumnNames !== null) {
+            columnNames = lowestColumnNames.columnNames;
+        }
+
+        parse.columnValues.forEach(function(param, index) {
+            var value = _.isUndefined(param.value) ? null : param.value;
+            if (!_.isUndefined(param.key)) {
+                initialValues[param.key] = value;
+                return;
             }
-        }
-
-        // １行のみ、行全体以外は対応しない
-        var link = text.trim().match(/^\[(.+)\]\((.+)\)$/);
-        var url = undefined;
-        if (link) {
-            text = link[1].trim();
-            url = link[2].trim();
-        }
-
-        text = text.trim();
-
-        var item = {
-            kind: kindUL,
-            indent: indent,
-            marker: marker,
-            group: -1,   // 場所確保のため一旦追加
-            depthInGroup: -1,   // 場所確保のため一旦追加
-            id: uid,
-            text: text,
-            tableData: data,
-            comment: comment,
-            imageFilePath: imageFilePath,
-            initialValues: initialValues,
-            attributes: attributes,
-            url: url,
-            variables: {},
-            children: [],
-
-            // 以下はJSON出力前に削除する
-            lineObj: lineObj
-        };
-
-        AddChildNode(stack.peek(), item);
-        stack.push(item);
-        //WScript.Echo(ul.length + "\n" + line);
-
-        if (!uidMatch || fResetId) {
-            // tree構築後にleafだったらIDをふる
-            var newSrcText = lineObj.line;
-            var match = newSrcText.match(/^(\s*[\*\+\-])(?: \[#[\w\-]+\]\s+)?(.*)$/);
-
-            // ID 挿入して書き換え
-            newSrcText = match[1] + " [#{uid}]" + match[2];
-
-            if (!_.isUndefined(lineObj.comment)) {
-                newSrcText += lineObj.comment;
+            if (_.isUndefined(columnNames)) {
+                var errorMessage = "列名リストが宣言されていません。";
+                throw new ParseError(errorMessage, lineObj);
             }
+            if (index >= columnNames.length) {
+                var errorMessage = "列の初期値が列名リストの範囲外に指定されています。";
+                throw new ParseError(errorMessage, lineObj);
+            }
+            var key = columnNames[index];
+            initialValues[key] = value;
+        });
+        return;
 
-            AddNoIdNode(item, lineObj, lineObj.lineNum, newSrcText);
+        var match = text.match(/^\s*\(([^\)]+)\)\s*(.+)$/);
+        if (match === null) {
+            // TODO: デフォルト値が設定されていれば指定がなくてもセット
+            return;
+        }
+        text = match[2];
+        initialValues = {};
+        var params = match[1].split(',');
+        var columnNameIndex = 0;
+        params.forEach(function(param) {
+            param = _.trim(param);
+            var nameValueMatch = param.match(/^([A-Za-z_]\w*)\s*:\s(.+)$/);
+            if (nameValueMatch) {
+                var name = nameValueMatch[1];
+                var value = nameValueMatch[2];
+                initialValues[name] = value;
+                return;
+            }
+            // TODO: stackから上にさかのぼって columnNames を見つける
+            var columnNames = [];
+            if (columnNameIndex >= columnNames.length) {
+                // TODO: 範囲外エラー
+            }
+            initialValues[columnNames[columnNameIndex]] = param;
+            // TODO: ダブルクォーテーション対応させる
+            columnNameIndex++;
+        });
+    })();
+
+
+    while (/.*\s\+\s*$/.test(text)) {
+        // 改行の次の行の行頭のスペースは無視するように
+        // 厳密にはインデントが揃ってるかちゃんとみるべきだけど、そこまでやるつもりはない
+        line = _.trimLeft(srcLines.read().line);
+        text = _.trimRight(_.trimRight(text).slice(0, -1));
+        text += "\n" + line;
+    }
+
+    // FIXME: 仕様を決める
+    var imageDirectory = stack.peek().variables.imagePath;
+
+    var commentResult = parseComment(text, lineObj.projectDirectory, imageDirectory);
+    var comment;
+    var imageFilePath;
+    if (commentResult) {
+        text = commentResult.text;
+        comment = commentResult.comment;
+        imageFilePath = commentResult.imageFilePath;
+        //var v = {
+        //    text: commentResult.text,
+        //    comment: commentResult.comment,
+        //    imageFilePath: commentResult.imageFilePath
+        //};
+        //printJSON(v);
+    }
+
+    //var commentMatch = text.trim().match(/^([\s\S]+)\s*\[\^(.+)\]$/);
+    //var comment = undefined;
+    //if (commentMatch) {
+    //    text = commentMatch[1].trim();
+    //    comment = commentMatch[2].trim();
+    //    comment = comment.replace(/<br>/gi, "\n");
+    //}
+
+    // table 形式でデータを記述できるように
+    var td = text.match(/^([^\|]+)\|(.*)\|$/);
+    var data = undefined;
+    if (td) {
+        // TODO: 画像対応
+        text = td[1].trim();
+        data = td[2].split("|");
+        for (var i = 0; i < data.length; i++) {
+            data[i] = data[i].trim();
         }
 
-        continue;
+        data = getDataFromTableRow(data, stack.peek());
+
+        if (!data) {
+            var errorMessage = "シートに該当IDの確認欄がありません";
+            throw new ParseError(errorMessage, lineObj);
+        }
+    }
+
+    // １行のみ、行全体以外は対応しない
+    var link = text.trim().match(/^\[(.+)\]\((.+)\)$/);
+    var url = undefined;
+    if (link) {
+        text = link[1].trim();
+        url = link[2].trim();
+    }
+
+    text = text.trim();
+
+    var item = {
+        kind: kindUL,
+        indent: indent,
+        marker: marker,
+        group: -1,   // 場所確保のため一旦追加
+        depthInGroup: -1,   // 場所確保のため一旦追加
+        id: uid,
+        text: text,
+        tableData: data,
+        comment: comment,
+        imageFilePath: imageFilePath,
+        initialValues: initialValues,
+        attributes: attributes,
+        url: url,
+        variables: {},
+        children: [],
+
+        // 以下はJSON出力前に削除する
+        lineObj: lineObj
+    };
+
+    AddChildNode(stack.peek(), item);
+    stack.push(item);
+    //WScript.Echo(ul.length + "\n" + line);
+
+    if (!uidMatch || fResetId) {
+        // tree構築後にleafだったらIDをふる
+        var newSrcText = lineObj.line;
+        var match = newSrcText.match(/^(\s*[\*\+\-])(?: \[#[\w\-]+\]\s+)?(.*)$/);
+
+        // ID 挿入して書き換え
+        newSrcText = match[1] + " [#{uid}]" + match[2];
+
+        if (!_.isUndefined(lineObj.comment)) {
+            newSrcText += lineObj.comment;
+        }
+
+        AddNoIdNode(item, lineObj, lineObj.lineNum, newSrcText);
+    }
+
+    return ul;
+}
+
+//  ファイルの文字データを一行ずつ読む
+while (!srcLines.atEnd) {
+    var lineObj = srcLines.read();
+    var line = lineObj.line;
+
+    try {
+        if (parseHeading(lineObj)) {
+            continue;
+        }
+        if (parseUnorderedList(lineObj)) {
+            continue;
+        }
+    }
+    catch (e) {
+        parseError(e);
     }
 
     // "*.", "-.", "+." はチェック項目列の見出しとする
