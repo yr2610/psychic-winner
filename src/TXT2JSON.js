@@ -177,8 +177,8 @@ includePath.push(fso.GetParentFolderName(filePath));
     }
 })();
 
-var confFilePath = "conf.yml";
-var conf = readConfigFile(confFilePath);
+var confFileName = "conf.yml";
+var conf = readConfigFile(confFileName);
 
 var entryFilePath = filePath;
 var entryProject = fso.GetParentFolderName(entryFilePath);

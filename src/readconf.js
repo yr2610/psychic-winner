@@ -1,5 +1,5 @@
-﻿function readConfigFile() {
-    confFilePath = fso.BuildPath(fso.GetParentFolderName(filePath), confFilePath);
+﻿function readConfigFile(confFileName) {
+    var confFilePath = fso.BuildPath(fso.GetParentFolderName(filePath), confFileName);
     if (!fso.FileExists(confFilePath)) {
         return {};
     }
