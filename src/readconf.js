@@ -5,6 +5,10 @@
     }
     var data = CL.readYAMLFile(confFilePath);
 
+    //var indexFilePath = fso.BuildPath(fso.GetParentFolderName(filePath), "index.yml");
+    //var index = CL.readYAMLFile(indexFilePath);
+    //printJSON(index);
+
     // include文法のパス用
     if (!_.isUndefined(data.includePath)) {
         includePath = includePath.concat(data.includePath);
