@@ -146,20 +146,20 @@ CheckRange.prototype.setArray2d = function(srcArray) {
 
     // 入力がある確認欄の列は autofit
     // としようと思ったけど、別に「確認欄の列は無条件で autofit」で良いか
-    {
-        var width = this.checkHeaders.length;
-        var rangeToAutofit = dstRange.Offset(-1, 0).Resize(height + 1, width);
-        rangeToAutofit.Columns.AutoFit();
-
-        if (this.templateData) {
-            var defaultInputColumnWidth = this.templateData.checkSheet.table.input.columnWidth;
-            for (var i = 0; i < width; i++) {
-                if (rangeToAutofit.Columns(1 + i).ColumnWidth < defaultInputColumnWidth) {
-                    rangeToAutofit.Columns(1 + i).ColumnWidth = defaultInputColumnWidth;
-                }
-            }
-        }
-    }
+    //{
+    //    var width = this.checkHeaders.length;
+    //    var rangeToAutofit = dstRange.Offset(-1, 0).Resize(height + 1, width);
+    //    rangeToAutofit.Columns.AutoFit();
+//
+    //    if (this.templateData) {
+    //        var defaultInputColumnWidth = this.templateData.checkSheet.table.input.columnWidth;
+    //        for (var i = 0; i < width; i++) {
+    //            if (rangeToAutofit.Columns(1 + i).ColumnWidth < defaultInputColumnWidth) {
+    //                rangeToAutofit.Columns(1 + i).ColumnWidth = defaultInputColumnWidth;
+    //            }
+    //        }
+    //    }
+    //}
 
     // これは更新が必要
     this.checkCellArray = null;
