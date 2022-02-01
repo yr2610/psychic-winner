@@ -793,7 +793,10 @@ function parseUnorderedList(lineObj) {
     }
 
     // FIXME: 仕様を決める
-    var imageDirectory = stack.peek().variables.imagePath;
+    // 上にさかのぼって最初に見つかったやつ採用
+    var imageDirectory = _.findLast(stack.__a, function(node) {
+        return !_.isUndefined(node.variables.imagePath);
+    }).variables.imagePath;
 
     var commentResult = parseComment(text, lineObj.projectDirectory, imageDirectory);
     var comment;
