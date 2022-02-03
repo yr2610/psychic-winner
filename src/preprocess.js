@@ -84,19 +84,21 @@ function parseMultilineComment(srcLines) {
 // #define とか #if else endif 的なの
 // コメント削除が適用済みのを渡す
 // objs: 定義済みマクロ変数
-function preProcessConditionalCompile(lines, defines) {
+// TODO: 最後の3個の引数（include の parse で使うやつ）を整理する
+function preProcessConditionalCompile(lines, defines, currentProjectDirectoryFromRoot, filePathAbs, templateVariables) {
     var srcLines = new ArrayReader(lines);
     var dstLines = [];
     var objs = defines;
     var states = []; // 入れ子対応のためスタックにしておく
 
     function currentCondtion() {
-        for (var i = 0; i < states.length; i++) {
-            if (!states[i].cond) {
-                return false;
-            }
-        }
-        return true;
+        return !_.find(states, 'cond', false);
+        //for (var i = 0; i < states.length; i++) {
+        //    if (!states[i].cond) {
+        //        return false;
+        //    }
+        //}
+        //return true;
     }
 
     function evalFormula(formula, objs) {
@@ -154,40 +156,40 @@ function preProcessConditionalCompile(lines, defines) {
     }
 
     function isReservedName(name) {
-        var reserved = {
-            'break': null,
-            'case': null,
-            'catch': null,
-            'continue': null,
-            'debugger': null,
-            'default': null,
-            'delete': null,
-            'do': null,
-            'else': null,
-            'finally': null,
-            'for': null,
-            'function': null,
-            'if': null,
-            'in': null,
-            'instanceof': null,
-            'new': null,
-            'return': null,
-            'switch': null,
-            'this': null,
-            'throw': null,
-            'try': null,
-            'typeof': null,
-            'var': null,
-            'void': null,
-            'while': null,
-            'with': null,
+        var reserved = [
+            'break',
+            'case',
+            'catch',
+            'continue',
+            'debugger',
+            'default',
+            'delete',
+            'do',
+            'else',
+            'finally',
+            'for',
+            'function',
+            'if',
+            'in',
+            'instanceof',
+            'new',
+            'return',
+            'switch',
+            'this',
+            'throw',
+            'try',
+            'typeof',
+            'var',
+            'void',
+            'while',
+            'with',
 
-            'true': null,
-            'false': null,
-            'undefined': null,
-            'null': null
-        };
-        return (name in reserved);
+            'true',
+            'false',
+            'undefined',
+            'null'
+        ];
+        return (_.indexOf(reserved, name) != -1);
     }
 
     function parseUndef(option, lineObj) {
@@ -241,11 +243,6 @@ function preProcessConditionalCompile(lines, defines) {
             var errorMessage = '右辺の式 "' + value + '" が不正です。';
             throw new ParseError(errorMessage, lineObj);
         }
-        lineObj.define = {
-            name: name,
-            value: objs[name]
-        };
-        //WScript.Echo(JSON.stringify(objs, undefined, 4));
     }
 
     function parseCondition(cond, lineObj) {
@@ -318,23 +315,12 @@ function preProcessConditionalCompile(lines, defines) {
         }
         states.pop();
     }
+    function parseCommand(lineObj) {
+        var commandMatch = lineObj.line.match(/^@([a-zA-Z]+)(.+)?$/);
 
-    try {
-
-    while (!srcLines.atEnd) {
-        var lineObj = srcLines.read();
-        var line = lineObj.line;
-    
-        //WScript.Echo(JSON.stringify(lineObj, undefined, 4));
-        if (!/^@.*/.test(line)) {
-            if (currentCondtion()) {
-                dstLines.push(lineObj);
-            }
-            continue;
+        if (!commandMatch) {
+            return null;
         }
-        //WScript.Echo(">>>\n" + JSON.stringify(lineObj, undefined, 4));
-
-        var commandMatch = line.match(/^@([a-zA-Z]+)(.+)?$/);
 
         //var s = "";
         //for (var i = 0; i < commandMatch.length; i++) {
@@ -343,6 +329,7 @@ function preProcessConditionalCompile(lines, defines) {
         //WScript.Echo(s);
         var command = commandMatch[1];
         var option = commandMatch[2];
+
         switch (command) {
             case 'define':
                 parseDefine(option, lineObj);
@@ -374,6 +361,82 @@ function preProcessConditionalCompile(lines, defines) {
                 break;
             }
         }
+
+        // bool で良いけどなんとなく lineObj を返しておく
+        return lineObj;
+    }
+    function parseInclude(lineObj) {
+        var includeMatch = lineObj.line.match(/^<<\[\s*(.+)\s*\]\s*(\((.+)?\))?$/);
+
+        if (!includeMatch) {
+            return null;
+        }
+
+        var includeFileString = includeMatch[1];
+        var includeOptionString = includeMatch[3];
+
+        try {
+            var includeFileInfo = parseIncludeFilePath(includeFileString, currentProjectDirectoryFromRoot, filePathAbs, templateVariables);
+        }
+        catch (e) {
+            throw new ParseError(e.errorMessage, lineObj);
+        }
+
+        try {
+            var includeParam = parseIncludeParameters(includeOptionString, templateVariables);
+        }
+        catch(e) {
+            var errorMessage = "include パラメータが不正です。";
+            throw new ParseError(errorMessage, lineObj);
+        }
+        //printJSON(includeParam);
+
+        // include ファイルに渡す用
+        // 上書きする（階層が深い方を優先）
+        var localTemplateVariables = _.assign(templateVariables, includeParam);
+
+        localTemplateVariables.$currentProjectDirectory = currentProjectDirectoryFromRoot;
+        //printJSON(localTemplateVariables);
+
+        var includeProjectDirectoryFromRoot = includeFileInfo.projectDirectory;
+
+        var path = includeFileInfo.filePath;
+        var pathAbs = directoryLocalPathToAbsolutePath(path, includeProjectDirectoryFromRoot, sourceDirectoryName);
+
+        if (!fso.FileExists(pathAbs)) {
+            var sourceDirectory = fso.BuildPath(includeFileInfo.projectDirectory, sourceDirectoryName);
+            //var relativeProjectPath = CL.getRelativePath(conf.$rootDirectory, includeFileInfo.sourceDirectory);
+            //var relativePath = CL.getRelativePath(includeFileInfo.sourceDirectory, path);
+            //var relativePath = includeFileString;
+
+            var errorMessage = "フォルダ\n" + sourceDirectory + "\nには\nファイル\n" + path + "\nが存在しません";
+            throw new ParseError(errorMessage, lineObj);
+        }
+
+        return preProcess_Recurse(path, includeProjectDirectoryFromRoot, defines, localTemplateVariables);
+    }
+
+    try {
+
+    while (!srcLines.atEnd) {
+        var lineObj = srcLines.read();
+
+        if (parseCommand(lineObj)) {
+            continue;
+        }
+
+        if (!currentCondtion()) {
+            continue;
+        }
+
+        var includeLines = parseInclude(lineObj);
+
+        if (includeLines) {
+            dstLines = dstLines.concat(includeLines);
+            continue;
+        }
+
+        dstLines.push(lineObj);
     }
 
     if (states.length !== 0) {
@@ -562,80 +625,9 @@ function preProcess_Recurse(filePath, currentProjectDirectoryFromRoot, defines, 
 
     lines = parseOneLineComment(lines);
     lines = parseMultilineComment(lines);
-    lines = preProcessConditionalCompile(lines, defines);
+    lines = preProcessConditionalCompile(lines, defines, currentProjectDirectoryFromRoot, filePathAbs, templateVariables);
 
-    //printJSON(lines);
-    //WScript.Quit(1);
-
-    var srcLines = new ArrayReader(lines);
-
-    var dstLines = [];
-
-    while (!srcLines.atEnd) {
-        var lineObj = srcLines.read();
-        var line = lineObj.line;
-
-        if (!_.isUndefined(lineObj.define)) {
-            var define = lineObj.define;
-            defines[define.name] = define.value;
-        }
-
-        var includeMatch = line.match(/^<<\[\s*(.+)\s*\]\s*(\((.+)?\))?$/);
-
-        if (includeMatch) {
-            var includeFileString = includeMatch[1];
-            var includeOptionString = includeMatch[3];
-
-            try {
-                var includeFileInfo = parseIncludeFilePath(includeFileString, currentProjectDirectoryFromRoot, filePathAbs, templateVariables);
-            }
-            catch (e) {
-                throw new ParseError(e.errorMessage, lineObj); 
-            }
-
-            try {
-                var includeParam = parseIncludeParameters(includeOptionString, templateVariables);
-            }
-            catch(e) {
-                var errorMessage = "include パラメータが不正です。";
-                throw new ParseError(errorMessage, lineObj); 
-            }
-            //printJSON(includeParam);
-
-            // include ファイルに渡す用
-            // 上書きする（階層が深い方を優先）
-            var localTemplateVariables = _.assign(templateVariables, includeParam);
-
-            localTemplateVariables.$currentProjectDirectory = currentProjectDirectoryFromRoot;
-            //printJSON(localTemplateVariables);
-
-            var includeProjectDirectoryFromRoot = includeFileInfo.projectDirectory;
-
-            var path = includeFileInfo.filePath;
-            var pathAbs = directoryLocalPathToAbsolutePath(path, includeProjectDirectoryFromRoot, sourceDirectoryName);
-
-            if (!fso.FileExists(pathAbs)) {
-                var sourceDirectory = fso.BuildPath(includeFileInfo.projectDirectory, sourceDirectoryName);
-                //var relativeProjectPath = CL.getRelativePath(conf.$rootDirectory, includeFileInfo.sourceDirectory);
-                //var relativePath = CL.getRelativePath(includeFileInfo.sourceDirectory, path);
-                //var relativePath = includeFileString;
-
-                var errorMessage = "フォルダ\n" + sourceDirectory + "\nには\nファイル\n" + path + "\nが存在しません";
-                throw new ParseError(errorMessage, lineObj);
-            }
-
-            var includeLines = preProcess_Recurse(path, includeProjectDirectoryFromRoot, defines, localTemplateVariables);
-            
-            dstLines = dstLines.concat(includeLines);
-
-            continue;
-        }
-        else {
-            dstLines.push(lineObj);
-        }
-    }
-
-    return dstLines;
+    return lines;
 }
 
 // preprocess
@@ -662,4 +654,3 @@ function preProcess(filePathAbs) {
         parseError(e);
     }
 }
-
