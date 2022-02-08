@@ -5,6 +5,8 @@
     }
     var data = CL.readYAMLFile(confFilePath);
 
+    var postProcess = [];
+
     //var indexFilePath = fso.BuildPath(fso.GetParentFolderName(filePath), "index.yml");
     //var index = CL.readYAMLFile(indexFilePath);
     //printJSON(index);
@@ -51,22 +53,32 @@
         // XXX: クソ実装ではあるけど、path の対処もここで
         processPath(data, baseDirectory);
 
-        if (_.isUndefined(data.$include)) {
-            return;
+        if (!_.isUndefined(data.$include)) {
+            var includeFiles = data.$include;
+            delete data.$include;
+            _.forEach(includeFiles, function(value) {
+                var includeFilePath = fso.BuildPath(baseDirectory, value);
+                var includeData = CL.readYAMLFile(includeFilePath);
+                processIncludeFiles(includeData, includeFilePath);
+                //_.assign(data, includeData);  // 上書きする
+                _.defaults(data, includeData);  // 上書きしない
+            });
         }
 
-        var includeFiles = data.$include;
-        delete data.$include;
-        _.forEach(includeFiles, function(value) {
-            var includeFilePath = fso.BuildPath(baseDirectory, value);
-            var includeData = CL.readYAMLFile(includeFilePath);
-            //_.assign(data, includeData);  // 上書きする
-            _.defaults(data, includeData);  // 上書きしない
-            processIncludeFiles(data, includeFilePath);
-        });
+        if (!_.isUndefined(data.$post_process)) {
+            var s = data.$post_process;
+            var f = Function.call(this, 'return ' + s)();
+            postProcess.push(f);
+            delete data.$post_process;
+        }
+    
     }
 
     processIncludeFiles(data, confFilePath);
+
+    _.forEach(postProcess, function(f) {
+        f(data);
+    });
 
     _.templateSettings = {
         evaluate: /\{\{([\s\S]+?)\}\}/g,
