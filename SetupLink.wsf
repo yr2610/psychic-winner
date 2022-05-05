@@ -31,7 +31,8 @@ var argsUnnamed = WScript.Arguments.Unnamed;
 
 if (( args.length != 1 ) ||
     ( argsUnnamed(0) == "")) {
-    Error("Make 対象のソースファイル（.txt）をドロップしてください。");
+    WScript.Echo("Make 対象のソースファイル（.txt）をドロップしてください。");
+    exit();
 }
 
 var targetFilePath = argsUnnamed(0);
