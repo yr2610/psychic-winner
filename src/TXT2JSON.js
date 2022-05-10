@@ -2278,12 +2278,29 @@ CL.deletePropertyForAllNodes(root, "marker");
             //printJSON(parameters);
 //            WScript.Echo(JSON.stringify(parameters, undefined, 4));
             forAllNodes_Recurse(subTree, null, -1, function(node, parent, index) {
-                function replacer(m, k) { return parameters[k]; }
+                // あるnodeに1個でも false 的なものが渡されたら、それ以下のnode削除
+                var toDelete = false;
+                function replacer(m, k) {
+                    // 明示的に省略を指定させたいので、未定義は対象外としておく
+                    if (_.isNull(parameters[k]) || parameters[k] === false) {
+                        toDelete = true;
+                        return "";
+                    }
+                    if (parameters[k] === true) {
+                        return "";
+                    }
+                    return parameters[k];
+                }
                 node.text = node.text.replace( /\{\{([A-Za-z_]\w*)\}\}/g, replacer);
+                if (toDelete) {
+                    node.parent.children[index] = null;
+                    return;
+                }
                 if (node.comment) {
                     node.comment = node.comment.replace( /\{\{([A-Za-z_]\w*)\}\}/g, replacer);
                 }
             });
+            shrinkChildrenArray(subTree, null, -1);
         }
 
         // XXX: node に循環参照があるので JSON.stringify は使えない
