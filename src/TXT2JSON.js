@@ -1067,6 +1067,46 @@ while (!srcLines.atEnd) {
         continue;
     }
 
+    if (/^\s*```yaml\s*$/.test(line)) {
+        var topLineObj = lineObj;
+        var parent = stack.peek();
+
+        var s = "";
+        // ```まで読む
+        while (true) {
+            lineObj = srcLines.read();
+            line = lineObj.line;
+            if (/^\s*```\s*$/.test(line)) {
+                break;
+            }
+            s += lineObj.line + "\n";
+        }
+
+        var o;
+
+        try {
+            o = jsyaml.safeLoad(s);
+        }
+        catch (e) {
+            // FIXME: Error という関数名を変えないと catch できないはず
+            var errorMessage = "YAML の parse に失敗しました。";
+            Error(errorMessage, lineObj.filePath, lineObj.lineNum);
+        }
+        //printJSON(o);
+
+        // 一旦は YAML の場合は記述位置に関係なくシートのrootに持っておくことにする
+        var paramNode;
+        for (paramNode = parent; paramNode.level != 1; paramNode = paramNode.parent) {
+        }
+
+        // TODO: 重複エラー出す
+        if (_.isUndefined(paramNode.params)) {
+            paramNode.params = {};
+        }
+        //_.assign(paramNode.params, o);  // 上書きする
+        _.defaults(paramNode.params, o);  // 上書きしない
+    }
+
     if (/^\s*```tsv\s*$/.test(line)) {
         var topLineObj = lineObj;
         var parent = stack.peek();
@@ -1944,7 +1984,25 @@ CL.deletePropertyForAllNodes(root, "marker");
         }
     }
 
-    function evalParameters(params) {
+    function evalParameters(params, node) {
+        var match = params.trim().match(/^([A-Za-z_]\w*)(\[\s*(\d+)\s*\])?$/);
+        if (match !== null) {
+            var paramName = match[1];
+            for (var parent = node.parent; parent !== null; parent = parent.parent) {
+                if (_.isUndefined(parent.params)) {
+                    continue;
+                }
+                if (paramName in parent.params) {
+                    var params = parent.params[paramName];
+                    if (match[3] !== "") {
+                        params = params[Number(match[3])];
+                    }
+                    return params;
+                }
+            }
+            // TODO: 該当する名前のパラメータオブジェクトが見つからない場合は例外投げる
+            return {};
+        }
         // object を返すには丸括弧が必要らしい
         return eval("({" + params + "})");
     }
@@ -2048,7 +2106,7 @@ CL.deletePropertyForAllNodes(root, "marker");
         parent.children[index] = null;
 
         try {
-            node.defaultParameters = evalParameters(match[2]);
+            node.defaultParameters = evalParameters(match[2], node);
         }
         catch(e) {
             var errorMessage = "パラメータが不正です。";
@@ -2135,7 +2193,7 @@ CL.deletePropertyForAllNodes(root, "marker");
                 var subTreeName = match[1];
 
                 try {
-                    var parameters = evalParameters(match[2]);
+                    var parameters = evalParameters(match[2], node);
                 }
                 catch(e) {
                     var errorMessage = "パラメータが不正です。";
@@ -2256,6 +2314,33 @@ CL.deletePropertyForAllNodes(root, "marker");
     // node に sub tree の clone を追加する
     // 展開前の状態で追加
     function addSubTree(targetNode, targetIndex, subTreeName, parameters) {
+        //printJSON(parameters);
+        if (_.isArray(parameters)) {
+            var clonedTargetNodes = [];
+            _.forEach(parameters, function(element, index) {
+                var node = cloneSubTree(targetNode);
+                var elementId = ("$id" in element) ? element.$id : "i" + index;
+                node.id = targetNode.id + "_" + elementId;
+
+                var match = node.text.match(/^\*[A-Za-z_]\w*\((.*)\)$/);
+                var paramName = match[1];
+
+                node.text = "*" + subTreeName + "(" + paramName + "[" + index + "])";
+                clonedTargetNodes.push(node);
+            });
+
+            targetNode.parent.children[targetIndex] = null;
+            //Array.prototype.splice.apply(targetNode.parent.children, [targetIndex + 1, 0].concat(clonedTargetNodes));
+            var a = targetNode.parent.children;
+            var insertedChildren = a.slice(0, targetIndex+1).concat(clonedTargetNodes).concat(a.slice(targetIndex+1));
+            insertedChildren[targetIndex] = null;
+            targetNode.parent.children = insertedChildren;
+
+            // ここではノードの追加のみ
+            // 処理自体はループの後ろでされる想定
+            return;
+        }
+
         var subTree = findSubTree_Recurse(subTreeName, targetNode.parent);
 
         // みつからなかった
@@ -2309,7 +2394,7 @@ CL.deletePropertyForAllNodes(root, "marker");
                     var subTreeName = match[1];
 
                     try {
-                        var parameters = evalParameters(match[2]);
+                        var parameters = evalParameters(match[2], node);
                     }
                     catch(e) {
                         var errorMessage = "パラメータが不正です。";
@@ -2390,7 +2475,7 @@ CL.deletePropertyForAllNodes(root, "marker");
             var subTreeName = match[1];
 
             try {
-                var parameters = evalParameters(match[2]);
+                var parameters = evalParameters(match[2], node);
             }
             catch(e) {
                 var errorMessage = "パラメータが不正です。";
@@ -2652,6 +2737,7 @@ CL.deletePropertyForAllNodes(root, "indent");
 CL.deletePropertyForAllNodes(root, "parent");
 CL.deletePropertyForAllNodes(root, "subTrees");
 CL.deletePropertyForAllNodes(root, "isValidSubTree");
+CL.deletePropertyForAllNodes(root, "params");
 
 forAllNodes_Recurse(root, null, -1, function(node, parent, index) {
     var headers = node.tableHeadersNonInputArea;
