@@ -1995,7 +1995,9 @@ CL.deletePropertyForAllNodes(root, "marker");
                 if (paramName in parent.params) {
                     var params = parent.params[paramName];
                     if (match[3] !== "") {
-                        params = params[Number(match[3])];
+                        var index = Number(match[3]);
+                        params = _.assign({}, params[index]);
+                        params.$index = index;
                     }
                     return params;
                 }
@@ -2361,14 +2363,55 @@ CL.deletePropertyForAllNodes(root, "marker");
         // 変数展開
         if (!_.isEmpty(parameters)) {
             //printJSON(parameters);
-//            WScript.Echo(JSON.stringify(parameters, undefined, 4));
+
+            // この後の eval 内でプロパティに直接アクセスできるように
+            _.forEach(parameters, function(value, key) {
+                if (_.isString(value)) {
+                    value = "'" + value + "'";
+                }
+                if (_.isArray(value)) {
+                    value = "[" + value + "]";
+                }
+                var s = key + "=" + value;
+                eval(s);
+            });
+
             forAllNodes_Recurse(subTree, null, -1, function(node, parent, index) {
-                function replacer(m, k) { return parameters[k]; }
-                node.text = node.text.replace( /\{\{([A-Za-z_]\w*)\}\}/g, replacer);
+                // あるnodeに1個でも false 的なものが渡されたら、それ以下のnode削除
+                var toDelete = false;
+                function replacer(m, k) {
+                    k = k.trim();
+                    var parameter;
+                    //var match = k.trim().match(/^eval\((.+)\)$/);
+                    if (/^[\w\$\.\[\]]+$/.test(k)) {
+                        // 変数そのままと . と [] でのアクセスだけ別処理
+                        // 少しでも処理が軽くなることを期待。意味なさそうだけど一応
+                        parameter = _.get(parameters, k, null);
+                    }
+                    else {
+                        parameter = eval("(" + k + ")");
+                    }
+
+                    // 明示的に省略を指定させたいので、未定義は対象外としておくことも考えたが、使い勝手的に省略で削除できる方が便利なので、そうする
+                    if (parameter === false || _.isUndefined(parameter) ||  _.isNull(parameter)) {
+                        toDelete = true;
+                        return "";
+                    }
+                    if (parameter === true) {
+                        return "";
+                    }
+                    return parameter;
+                }
+                node.text = node.text.replace( /\{\{([^\}]+)\}\}/g, replacer);
+                if (toDelete) {
+                    node.parent.children[index] = null;
+                    return;
+                }
                 if (node.comment) {
-                    node.comment = node.comment.replace( /\{\{([A-Za-z_]\w*)\}\}/g, replacer);
+                    node.comment = node.comment.replace( /\{\{([^\}]+)\}\}/g, replacer);
                 }
             });
+            shrinkChildrenArray(subTree, null, -1);
         }
 
         // XXX: node に循環参照があるので JSON.stringify は使えない
