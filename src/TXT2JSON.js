@@ -60,15 +60,15 @@ var ParseError = function(errorMessage, lineObj) {
 // ParseError が引数
 function parseError(e) {
     if (_.isUndefined(e.lineObj)) {
-        Error(e.errorMessage);
+        MyError(e.errorMessage);
     }
     else {
         var lineObj = e.lineObj;
-        Error(e.errorMessage, lineObj.filePath, lineObj.lineNum);
+        MyError(e.errorMessage, lineObj.filePath, lineObj.lineNum);
     }
 }
 
-function Error(message, filePath, lineNum) {
+function MyError(message, filePath, lineNum) {
     if (typeof filePath !== "undefined") {
         var relativeFilePath = getRelativePath(filePath, rootFilePath, fso);
         if (relativeFilePath) {
@@ -128,13 +128,13 @@ var stream = new ActiveXObject("ADODB.Stream");
 
 if (( WScript.Arguments.length != 1 ) ||
     ( WScript.Arguments.Unnamed(0) == "")) {
-    Error("チェックリストのソースファイル（.txt）をドラッグ＆ドロップしてください。");
+    MyError("チェックリストのソースファイル（.txt）をドラッグ＆ドロップしてください。");
 }
 
 var filePath = WScript.Arguments.Unnamed(0);
 
 if (fso.GetExtensionName(filePath) != "txt") {
-    Error(".txt ファイルをドラッグ＆ドロップしてください。");
+    MyError(".txt ファイルをドラッグ＆ドロップしてください。");
 }
 
 // Performance を取得
@@ -611,7 +611,7 @@ function parseUnorderedList(lineObj) {
         var regex = /　/g;
         if (regex.test(fullwidthSpaceMatch[1])) {
             var errorMessage = "行頭に全角スペースが含まれています";
-            Error(errorMessage, lineObj.filePath, lineObj.lineNum);
+            MyError(errorMessage, lineObj.filePath, lineObj.lineNum);
         }
     })();
     // # とか - とか 1. の後ろにスペースがないかのチェック
@@ -983,12 +983,12 @@ while (!srcLines.atEnd) {
                     comment = commentMatch[2].trim();
                     if (/<br>/gi.test(comment)) {
                         var errorMessage = "確認欄のコメントでは改行は使えません";
-                        Error(errorMessage, lineObj.filePath, lineObj.lineNum);
+                        MyError(errorMessage, lineObj.filePath, lineObj.lineNum);
                     }
                     // Excel の仕様で、入力時メッセージのタイトルは31文字まで
                     if (comment.length > 32) {
                         var errorMessage = "確認欄のコメントが32文字を超えています";
-                        Error(errorMessage, lineObj.filePath, lineObj.lineNum);
+                        MyError(errorMessage, lineObj.filePath, lineObj.lineNum);
                     }
                 }
                 
@@ -1004,7 +1004,7 @@ while (!srcLines.atEnd) {
                 // すでに同じIDの確認欄が存在
                 if (headerIndex !== -1) {
                     var errorMessage = "確認欄のID(" + number + ")が重複しています";
-                    Error(errorMessage, lineObj.filePath, lineObj.lineNum);
+                    MyError(errorMessage, lineObj.filePath, lineObj.lineNum);
                 }
                 else {
                     parent.tableHeaders.push(item);
@@ -1028,7 +1028,7 @@ while (!srcLines.atEnd) {
 
                 if (headerIndex === -1) {
                     var errorMessage = "シートにID" + number + "の確認欄がありません";
-                    Error(errorMessage, lineObj.filePath, lineObj.lineNum);
+                    MyError(errorMessage, lineObj.filePath, lineObj.lineNum);
                 }
 
                 parent.tableData[headerIndex] = text;
@@ -1046,7 +1046,7 @@ while (!srcLines.atEnd) {
     if (th) {
         var parent = stack.peek();
         if (parent.kind != kindH || parent.level != 1) {
-            Error("番号付きリストは H1 の直下以外には作れません");
+            MyError("番号付きリストは H1 の直下以外には作れません");
         }
         parent.tableHeaders = [];
         th = th[1].split("|");
@@ -1090,7 +1090,7 @@ while (!srcLines.atEnd) {
         catch (e) {
             // FIXME: Error という関数名を変えないと catch できないはず
             var errorMessage = "YAML の parse に失敗しました。";
-            Error(errorMessage, lineObj.filePath, lineObj.lineNum);
+            MyError(errorMessage, lineObj.filePath, lineObj.lineNum);
         }
         //printJSON(o);
 
@@ -1212,7 +1212,7 @@ while (!srcLines.atEnd) {
         //Error(hNodeSplitColumn +", "+ !hLevel);
         if (hNodeSplitColumn && !hLevel) {
             var errorMessage = "カテゴリーを項目の子階層として追加することはできません";
-            Error(errorMessage, topLineObj.filePath, topLineObj.lineNum);
+            MyError(errorMessage, topLineObj.filePath, topLineObj.lineNum);
         }
         // "||" 列を削除
         if (hNodeSplitColumn) {
@@ -1303,7 +1303,7 @@ while (!srcLines.atEnd) {
                             var errorMessage = "ID '#" + uid + "' が重複しています";
                             errorMessage += makeLineinfoString(uidInfo0.filePath, uidInfo0.lineNum);
                             errorMessage += makeLineinfoString(lineObj.filePath, lines[i].lineNum);
-                            Error(errorMessage);
+                            MyError(errorMessage);
                         }
                         else
                         {
@@ -1320,7 +1320,7 @@ while (!srcLines.atEnd) {
                 if (!tableData)
                 {
                     var errorMessage = "シートに該当IDの確認欄がありません";
-                    Error(errorMessage, lineObj.filePath, lines[i].lineNum);
+                    MyError(errorMessage, lineObj.filePath, lines[i].lineNum);
                 }
 
                 lines[i].tableData = tableData;
@@ -1463,7 +1463,7 @@ while (!srcLines.atEnd) {
                             var errorMessage = "ID '#" + uid + "' が重複しています";
                             errorMessage += makeLineinfoString(uidInfo0.filePath, uidInfo0.lineNum);
                             errorMessage += makeLineinfoString(lineObj.filePath, lines[i].lineNum);
-                            Error(errorMessage);
+                            MyError(errorMessage);
                         }
                         else
                         {
@@ -1495,7 +1495,7 @@ while (!srcLines.atEnd) {
                     if (!data)
                     {
                         var errorMessage = "シートに該当IDの確認欄がありません";
-                        Error(errorMessage, lineObj.filePath, lines[i].lineNum);
+                        MyError(errorMessage, lineObj.filePath, lines[i].lineNum);
                     }
                 }
                 
@@ -1688,10 +1688,10 @@ while (!srcLines.atEnd) {
     catch (e) {
         (function (errorMessage, lineObj) {
             if (_.isUndefined(lineObj)) {
-                Error(errorMessage);
+                MyError(errorMessage);
             }
             else {
-                Error(errorMessage, lineObj.filePath, lineObj.lineNum);
+                MyError(errorMessage, lineObj.filePath, lineObj.lineNum);
             }
         })(e.errorMessage, e.lineObj);
     }
@@ -1762,7 +1762,7 @@ root.children.forEach(function(element, index, array) {
     if (element.children.length === 0) {
         var errorMessage = "シート「"+ element.text +"」に項目が存在しません\n※シートには最低１個の項目が必要です";
         var lineObj = element.lineObj;
-        Error(errorMessage, lineObj.filePath, lineObj.lineNum);
+        MyError(errorMessage, lineObj.filePath, lineObj.lineNum);
     }
 });
 
@@ -1913,10 +1913,10 @@ _.forEach(noIdNodes, function(infos) {
         (function (errorMessage, node) {
             var lineObj = node.lineObj;
             if (_.isUndefined(lineObj)) {
-                Error(errorMessage);
+                MyError(errorMessage);
             }
             else {
-                Error(errorMessage, lineObj.filePath, lineObj.lineNum);
+                MyError(errorMessage, lineObj.filePath, lineObj.lineNum);
             }
         })(e.errorMessage, e.node);
     }
@@ -1977,10 +1977,10 @@ CL.deletePropertyForAllNodes(root, "marker");
     function aliasError(errorMessage, node) {
         var lineObj = node.lineObj;
         if (_.isUndefined(lineObj)) {
-            Error(errorMessage);
+            MyError(errorMessage);
         }
         else {
-            Error(errorMessage, lineObj.filePath, lineObj.lineNum);
+            MyError(errorMessage, lineObj.filePath, lineObj.lineNum);
         }
     }
 
@@ -2141,7 +2141,7 @@ CL.deletePropertyForAllNodes(root, "marker");
                     if (node.kind === kindH) {
                         var errorMessage = "シート「"+ node.text +"」に有効な項目が存在しません\n※子階層がエイリアスのみとなっている可能性があります";
                         var lineObj = node.lineObj;
-                        Error(errorMessage, lineObj.filePath, lineObj.lineNum);
+                        MyError(errorMessage, lineObj.filePath, lineObj.lineNum);
                     }
                     if (parent !== null) {
                         parent.children[index] = null;
@@ -2713,10 +2713,10 @@ try {
 catch (e) {
     (function (errorMessage, lineObj) {
         if (_.isUndefined(lineObj)) {
-            Error(errorMessage);
+            MyError(errorMessage);
         }
         else {
-            Error(errorMessage, lineObj.filePath, lineObj.lineNum);
+            MyError(errorMessage, lineObj.filePath, lineObj.lineNum);
         }
     })(e.errorMessage, e.lineObj);
 }
