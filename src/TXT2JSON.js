@@ -2164,6 +2164,7 @@ CL.deletePropertyForAllNodes(root, "marker");
 
     // 名前からtreeをさかのぼって見つける
     // なければ null を返す
+    // TODO: これだと template 内で宣言された template に対応できない
     function findSubTree_Recurse(subTreeName, node) {
         if (_.isUndefined(node) || node === null) {
             return null;
