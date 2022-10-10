@@ -60,15 +60,15 @@ var ParseError = function(errorMessage, lineObj) {
 // ParseError が引数
 function parseError(e) {
     if (_.isUndefined(e.lineObj)) {
-        Error(e.errorMessage);
+        MyError(e.errorMessage);
     }
     else {
         var lineObj = e.lineObj;
-        Error(e.errorMessage, lineObj.filePath, lineObj.lineNum);
+        MyError(e.errorMessage, lineObj.filePath, lineObj.lineNum);
     }
 }
 
-function Error(message, filePath, lineNum) {
+function MyError(message, filePath, lineNum) {
     if (typeof filePath !== "undefined") {
         var relativeFilePath = getRelativePath(filePath, rootFilePath, fso);
         if (relativeFilePath) {
@@ -128,13 +128,13 @@ var stream = new ActiveXObject("ADODB.Stream");
 
 if (( WScript.Arguments.length != 1 ) ||
     ( WScript.Arguments.Unnamed(0) == "")) {
-    Error("チェックリストのソースファイル（.txt）をドラッグ＆ドロップしてください。");
+    MyError("チェックリストのソースファイル（.txt）をドラッグ＆ドロップしてください。");
 }
 
 var filePath = WScript.Arguments.Unnamed(0);
 
 if (fso.GetExtensionName(filePath) != "txt") {
-    Error(".txt ファイルをドラッグ＆ドロップしてください。");
+    MyError(".txt ファイルをドラッグ＆ドロップしてください。");
 }
 
 // Performance を取得
@@ -611,7 +611,7 @@ function parseUnorderedList(lineObj) {
         var regex = /　/g;
         if (regex.test(fullwidthSpaceMatch[1])) {
             var errorMessage = "行頭に全角スペースが含まれています";
-            Error(errorMessage, lineObj.filePath, lineObj.lineNum);
+            MyError(errorMessage, lineObj.filePath, lineObj.lineNum);
         }
     })();
     // # とか - とか 1. の後ろにスペースがないかのチェック
@@ -983,12 +983,12 @@ while (!srcLines.atEnd) {
                     comment = commentMatch[2].trim();
                     if (/<br>/gi.test(comment)) {
                         var errorMessage = "確認欄のコメントでは改行は使えません";
-                        Error(errorMessage, lineObj.filePath, lineObj.lineNum);
+                        MyError(errorMessage, lineObj.filePath, lineObj.lineNum);
                     }
                     // Excel の仕様で、入力時メッセージのタイトルは31文字まで
                     if (comment.length > 32) {
                         var errorMessage = "確認欄のコメントが32文字を超えています";
-                        Error(errorMessage, lineObj.filePath, lineObj.lineNum);
+                        MyError(errorMessage, lineObj.filePath, lineObj.lineNum);
                     }
                 }
                 
@@ -1004,7 +1004,7 @@ while (!srcLines.atEnd) {
                 // すでに同じIDの確認欄が存在
                 if (headerIndex !== -1) {
                     var errorMessage = "確認欄のID(" + number + ")が重複しています";
-                    Error(errorMessage, lineObj.filePath, lineObj.lineNum);
+                    MyError(errorMessage, lineObj.filePath, lineObj.lineNum);
                 }
                 else {
                     parent.tableHeaders.push(item);
@@ -1028,7 +1028,7 @@ while (!srcLines.atEnd) {
 
                 if (headerIndex === -1) {
                     var errorMessage = "シートにID" + number + "の確認欄がありません";
-                    Error(errorMessage, lineObj.filePath, lineObj.lineNum);
+                    MyError(errorMessage, lineObj.filePath, lineObj.lineNum);
                 }
 
                 parent.tableData[headerIndex] = text;
@@ -1046,7 +1046,7 @@ while (!srcLines.atEnd) {
     if (th) {
         var parent = stack.peek();
         if (parent.kind != kindH || parent.level != 1) {
-            Error("番号付きリストは H1 の直下以外には作れません");
+            MyError("番号付きリストは H1 の直下以外には作れません");
         }
         parent.tableHeaders = [];
         th = th[1].split("|");
@@ -1065,6 +1065,46 @@ while (!srcLines.atEnd) {
             parent.tableHeaders.push(item);
         }
         continue;
+    }
+
+    if (/^\s*```yaml\s*$/.test(line)) {
+        var topLineObj = lineObj;
+        var parent = stack.peek();
+
+        var s = "";
+        // ```まで読む
+        while (true) {
+            lineObj = srcLines.read();
+            line = lineObj.line;
+            if (/^\s*```\s*$/.test(line)) {
+                break;
+            }
+            s += lineObj.line + "\n";
+        }
+
+        var o;
+
+        try {
+            o = jsyaml.safeLoad(s);
+        }
+        catch (e) {
+            // FIXME: Error という関数名を変えないと catch できないはず
+            var errorMessage = "YAML の parse に失敗しました。";
+            MyError(errorMessage, lineObj.filePath, lineObj.lineNum);
+        }
+        //printJSON(o);
+
+        // 一旦は YAML の場合は記述位置に関係なくシートのrootに持っておくことにする
+        var paramNode;
+        for (paramNode = parent; paramNode.level != 1; paramNode = paramNode.parent) {
+        }
+
+        // TODO: 重複エラー出す
+        if (_.isUndefined(paramNode.params)) {
+            paramNode.params = {};
+        }
+        //_.assign(paramNode.params, o);  // 上書きする
+        _.defaults(paramNode.params, o);  // 上書きしない
     }
 
     if (/^\s*```tsv\s*$/.test(line)) {
@@ -1172,7 +1212,7 @@ while (!srcLines.atEnd) {
         //Error(hNodeSplitColumn +", "+ !hLevel);
         if (hNodeSplitColumn && !hLevel) {
             var errorMessage = "カテゴリーを項目の子階層として追加することはできません";
-            Error(errorMessage, topLineObj.filePath, topLineObj.lineNum);
+            MyError(errorMessage, topLineObj.filePath, topLineObj.lineNum);
         }
         // "||" 列を削除
         if (hNodeSplitColumn) {
@@ -1263,7 +1303,7 @@ while (!srcLines.atEnd) {
                             var errorMessage = "ID '#" + uid + "' が重複しています";
                             errorMessage += makeLineinfoString(uidInfo0.filePath, uidInfo0.lineNum);
                             errorMessage += makeLineinfoString(lineObj.filePath, lines[i].lineNum);
-                            Error(errorMessage);
+                            MyError(errorMessage);
                         }
                         else
                         {
@@ -1280,7 +1320,7 @@ while (!srcLines.atEnd) {
                 if (!tableData)
                 {
                     var errorMessage = "シートに該当IDの確認欄がありません";
-                    Error(errorMessage, lineObj.filePath, lines[i].lineNum);
+                    MyError(errorMessage, lineObj.filePath, lines[i].lineNum);
                 }
 
                 lines[i].tableData = tableData;
@@ -1423,7 +1463,7 @@ while (!srcLines.atEnd) {
                             var errorMessage = "ID '#" + uid + "' が重複しています";
                             errorMessage += makeLineinfoString(uidInfo0.filePath, uidInfo0.lineNum);
                             errorMessage += makeLineinfoString(lineObj.filePath, lines[i].lineNum);
-                            Error(errorMessage);
+                            MyError(errorMessage);
                         }
                         else
                         {
@@ -1455,7 +1495,7 @@ while (!srcLines.atEnd) {
                     if (!data)
                     {
                         var errorMessage = "シートに該当IDの確認欄がありません";
-                        Error(errorMessage, lineObj.filePath, lines[i].lineNum);
+                        MyError(errorMessage, lineObj.filePath, lines[i].lineNum);
                     }
                 }
                 
@@ -1648,10 +1688,10 @@ while (!srcLines.atEnd) {
     catch (e) {
         (function (errorMessage, lineObj) {
             if (_.isUndefined(lineObj)) {
-                Error(errorMessage);
+                MyError(errorMessage);
             }
             else {
-                Error(errorMessage, lineObj.filePath, lineObj.lineNum);
+                MyError(errorMessage, lineObj.filePath, lineObj.lineNum);
             }
         })(e.errorMessage, e.lineObj);
     }
@@ -1722,7 +1762,7 @@ root.children.forEach(function(element, index, array) {
     if (element.children.length === 0) {
         var errorMessage = "シート「"+ element.text +"」に項目が存在しません\n※シートには最低１個の項目が必要です";
         var lineObj = element.lineObj;
-        Error(errorMessage, lineObj.filePath, lineObj.lineNum);
+        MyError(errorMessage, lineObj.filePath, lineObj.lineNum);
     }
 });
 
@@ -1873,10 +1913,10 @@ _.forEach(noIdNodes, function(infos) {
         (function (errorMessage, node) {
             var lineObj = node.lineObj;
             if (_.isUndefined(lineObj)) {
-                Error(errorMessage);
+                MyError(errorMessage);
             }
             else {
-                Error(errorMessage, lineObj.filePath, lineObj.lineNum);
+                MyError(errorMessage, lineObj.filePath, lineObj.lineNum);
             }
         })(e.errorMessage, e.node);
     }
@@ -1937,14 +1977,34 @@ CL.deletePropertyForAllNodes(root, "marker");
     function aliasError(errorMessage, node) {
         var lineObj = node.lineObj;
         if (_.isUndefined(lineObj)) {
-            Error(errorMessage);
+            MyError(errorMessage);
         }
         else {
-            Error(errorMessage, lineObj.filePath, lineObj.lineNum);
+            MyError(errorMessage, lineObj.filePath, lineObj.lineNum);
         }
     }
 
-    function evalParameters(params) {
+    function evalParameters(params, node) {
+        var match = params.trim().match(/^([A-Za-z_]\w*)(\[\s*(\d+)\s*\])?$/);
+        if (match !== null) {
+            var paramName = match[1];
+            for (var parent = node.parent; parent !== null; parent = parent.parent) {
+                if (_.isUndefined(parent.params)) {
+                    continue;
+                }
+                if (paramName in parent.params) {
+                    var params = parent.params[paramName];
+                    if (match[3] !== "") {
+                        var index = Number(match[3]);
+                        params = _.assign({}, params[index]);
+                        params.$index = index;
+                    }
+                    return params;
+                }
+            }
+            // TODO: 該当する名前のパラメータオブジェクトが見つからない場合は例外投げる
+            return {};
+        }
         // object を返すには丸括弧が必要らしい
         return eval("({" + params + "})");
     }
@@ -2048,7 +2108,7 @@ CL.deletePropertyForAllNodes(root, "marker");
         parent.children[index] = null;
 
         try {
-            node.defaultParameters = evalParameters(match[2]);
+            node.defaultParameters = evalParameters(match[2], node);
         }
         catch(e) {
             var errorMessage = "パラメータが不正です。";
@@ -2081,7 +2141,7 @@ CL.deletePropertyForAllNodes(root, "marker");
                     if (node.kind === kindH) {
                         var errorMessage = "シート「"+ node.text +"」に有効な項目が存在しません\n※子階層がエイリアスのみとなっている可能性があります";
                         var lineObj = node.lineObj;
-                        Error(errorMessage, lineObj.filePath, lineObj.lineNum);
+                        MyError(errorMessage, lineObj.filePath, lineObj.lineNum);
                     }
                     if (parent !== null) {
                         parent.children[index] = null;
@@ -2135,7 +2195,7 @@ CL.deletePropertyForAllNodes(root, "marker");
                 var subTreeName = match[1];
 
                 try {
-                    var parameters = evalParameters(match[2]);
+                    var parameters = evalParameters(match[2], node);
                 }
                 catch(e) {
                     var errorMessage = "パラメータが不正です。";
@@ -2256,6 +2316,33 @@ CL.deletePropertyForAllNodes(root, "marker");
     // node に sub tree の clone を追加する
     // 展開前の状態で追加
     function addSubTree(targetNode, targetIndex, subTreeName, parameters) {
+        //printJSON(parameters);
+        if (_.isArray(parameters)) {
+            var clonedTargetNodes = [];
+            _.forEach(parameters, function(element, index) {
+                var node = cloneSubTree(targetNode);
+                var elementId = ("$id" in element) ? element.$id : "i" + index;
+                node.id = targetNode.id + "_" + elementId;
+
+                var match = node.text.match(/^\*[A-Za-z_]\w*\((.*)\)$/);
+                var paramName = match[1];
+
+                node.text = "*" + subTreeName + "(" + paramName + "[" + index + "])";
+                clonedTargetNodes.push(node);
+            });
+
+            targetNode.parent.children[targetIndex] = null;
+            //Array.prototype.splice.apply(targetNode.parent.children, [targetIndex + 1, 0].concat(clonedTargetNodes));
+            var a = targetNode.parent.children;
+            var insertedChildren = a.slice(0, targetIndex+1).concat(clonedTargetNodes).concat(a.slice(targetIndex+1));
+            insertedChildren[targetIndex] = null;
+            targetNode.parent.children = insertedChildren;
+
+            // ここではノードの追加のみ
+            // 処理自体はループの後ろでされる想定
+            return;
+        }
+
         var subTree = findSubTree_Recurse(subTreeName, targetNode.parent);
 
         // みつからなかった
@@ -2276,28 +2363,52 @@ CL.deletePropertyForAllNodes(root, "marker");
         // 変数展開
         if (!_.isEmpty(parameters)) {
             //printJSON(parameters);
-//            WScript.Echo(JSON.stringify(parameters, undefined, 4));
+
+            // この後の eval 内でプロパティに直接アクセスできるように
+            _.forEach(parameters, function(value, key) {
+                if (_.isString(value)) {
+                    value = "'" + value + "'";
+                }
+                if (_.isArray(value)) {
+                    value = "[" + value + "]";
+                }
+                var s = key + "=" + value;
+                eval(s);
+            });
+
             forAllNodes_Recurse(subTree, null, -1, function(node, parent, index) {
                 // あるnodeに1個でも false 的なものが渡されたら、それ以下のnode削除
                 var toDelete = false;
                 function replacer(m, k) {
-                    // 明示的に省略を指定させたいので、未定義は対象外としておく
-                    if (_.isNull(parameters[k]) || parameters[k] === false) {
+                    k = k.trim();
+                    var parameter;
+                    //var match = k.trim().match(/^eval\((.+)\)$/);
+                    if (/^[\w\$\.\[\]]+$/.test(k)) {
+                        // 変数そのままと . と [] でのアクセスだけ別処理
+                        // 少しでも処理が軽くなることを期待。意味なさそうだけど一応
+                        parameter = _.get(parameters, k, null);
+                    }
+                    else {
+                        parameter = eval("(" + k + ")");
+                    }
+
+                    // 明示的に省略を指定させたいので、未定義は対象外としておくことも考えたが、使い勝手的に省略で削除できる方が便利なので、そうする
+                    if (parameter === false || _.isUndefined(parameter) ||  _.isNull(parameter)) {
                         toDelete = true;
                         return "";
                     }
-                    if (parameters[k] === true) {
+                    if (parameter === true) {
                         return "";
                     }
-                    return parameters[k];
+                    return parameter;
                 }
-                node.text = node.text.replace( /\{\{([A-Za-z_]\w*)\}\}/g, replacer);
+                node.text = node.text.replace( /\{\{([^\}]+)\}\}/g, replacer);
                 if (toDelete) {
                     node.parent.children[index] = null;
                     return;
                 }
                 if (node.comment) {
-                    node.comment = node.comment.replace( /\{\{([A-Za-z_]\w*)\}\}/g, replacer);
+                    node.comment = node.comment.replace( /\{\{([^\}]+)\}\}/g, replacer);
                 }
             });
             shrinkChildrenArray(subTree, null, -1);
@@ -2326,7 +2437,7 @@ CL.deletePropertyForAllNodes(root, "marker");
                     var subTreeName = match[1];
 
                     try {
-                        var parameters = evalParameters(match[2]);
+                        var parameters = evalParameters(match[2], node);
                     }
                     catch(e) {
                         var errorMessage = "パラメータが不正です。";
@@ -2407,7 +2518,7 @@ CL.deletePropertyForAllNodes(root, "marker");
             var subTreeName = match[1];
 
             try {
-                var parameters = evalParameters(match[2]);
+                var parameters = evalParameters(match[2], node);
             }
             catch(e) {
                 var errorMessage = "パラメータが不正です。";
@@ -2602,10 +2713,10 @@ try {
 catch (e) {
     (function (errorMessage, lineObj) {
         if (_.isUndefined(lineObj)) {
-            Error(errorMessage);
+            MyError(errorMessage);
         }
         else {
-            Error(errorMessage, lineObj.filePath, lineObj.lineNum);
+            MyError(errorMessage, lineObj.filePath, lineObj.lineNum);
         }
     })(e.errorMessage, e.lineObj);
 }
@@ -2669,6 +2780,7 @@ CL.deletePropertyForAllNodes(root, "indent");
 CL.deletePropertyForAllNodes(root, "parent");
 CL.deletePropertyForAllNodes(root, "subTrees");
 CL.deletePropertyForAllNodes(root, "isValidSubTree");
+CL.deletePropertyForAllNodes(root, "params");
 
 forAllNodes_Recurse(root, null, -1, function(node, parent, index) {
     var headers = node.tableHeadersNonInputArea;
