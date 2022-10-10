@@ -2073,7 +2073,7 @@ CL.deletePropertyForAllNodes(root, "marker");
             return;
         }
 
-        var match = node.text.trim().match(/^&([A-Za-z_]\w*)\((.*)\)$/);
+        var match = node.text.trim().match(/^&([A-Za-z_]\w*)\(\)$/);
         if (match === null) {
             return;
         }
@@ -2107,14 +2107,16 @@ CL.deletePropertyForAllNodes(root, "marker");
         // 親の children の自分自身を null に
         parent.children[index] = null;
 
-        try {
-            node.defaultParameters = evalParameters(match[2], node);
-        }
-        catch(e) {
-            var errorMessage = "パラメータが不正です。";
-            aliasError(errorMessage, node);
-        }
-        //WScript.Echo(JSON.stringify(node.defaultParameters, undefined, 4));
+        // TODO: defaultParameter 仕様は廃止の方向で
+        // 現状 evalParameters() の仕様が defaultParameter 仕様に合っていない
+        //try {
+        //    node.defaultParameters = evalParameters(match[2], node);
+        //}
+        //catch(e) {
+        //    var errorMessage = "パラメータが不正です。";
+        //    aliasError(errorMessage, node);
+        //}
+        //printJSON(node.defaultParameters);
 
         return true;
     });
@@ -2354,11 +2356,12 @@ CL.deletePropertyForAllNodes(root, "marker");
         // まず clone
         subTree = cloneSubTree(subTree);
 
-        _.forEach(subTree.defaultParameters, function(value, key) {
-            if (_.isUndefined(parameters[key])) {
-                parameters[key] = value;
-            }
-        });
+        // TODO: defaultParameter 仕様は廃止の方向で
+        //_.forEach(subTree.defaultParameters, function(value, key) {
+        //    if (_.isUndefined(parameters[key])) {
+        //        parameters[key] = value;
+        //    }
+        //});
 
         // 変数展開
         if (!_.isEmpty(parameters)) {
