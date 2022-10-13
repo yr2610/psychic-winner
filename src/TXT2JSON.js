@@ -2904,6 +2904,9 @@ function forAllNodes_Recurse(node, parent, index, preChildren, postChildren) {
     }
 
     for (var i = 0; i < node.children.length; i++) {
+        if (node.children[i] === null) {
+            continue;
+        }
         forAllNodes_Recurse(node.children[i], node, i, preChildren, postChildren);
     }
 
