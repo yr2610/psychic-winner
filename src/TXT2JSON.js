@@ -2018,42 +2018,40 @@ CL.deletePropertyForAllNodes(root, "marker");
     }
 
     function evalParameters(paramsStr, node, currentParameters) {
-        var match = paramsStr.trim().match(/^([A-Za-z_]\w*)(\[\s*(\d+)\s*\])?$/);
-        if (match !== null) {
-            var paramName = match[1];
-
-            if (!_.isUndefined(currentParameters)) {
-                if (paramName in currentParameters) {
-                    var params = currentParameters[paramName];
-                    if (match[3] !== "") {
-                        var index = Number(match[3]);
-                        var param = params[index];
-                        params = _.assign({}, param);   // 上書きする
-                    }
-                    //params.$params = params;
-                    return params;
-                }
-            }
-
-            for (var parent = node.parent; parent !== null; parent = parent.parent) {
-                if (_.isUndefined(parent.params)) {
-                    continue;
-                }
-                if (paramName in parent.params) {
-                    var params = parent.params[paramName];
-                    if (match[3] !== "") {
-                        var index = Number(match[3]);
-                        params = _.assign({}, params[index]);
-                    }
-                    //params.$params = params;
-                    return params;
-                }
-            }
-            // TODO: 該当する名前のパラメータオブジェクトが見つからない場合は例外投げる
+        paramsStr = paramsStr.trim();
+        if (paramsStr == "") {
             return {};
         }
-        // object を返すには丸括弧が必要らしい
-        return eval("({" + paramsStr + "})");
+
+        // 直接 object 渡しの場合は { } で囲む
+        if (/^\{.+\}$/.test(paramsStr)) {
+            // object を返すには丸括弧が必要らしい
+            var params = eval("(" + paramsStr + ")");
+            //params.$params = params;
+            return params;
+        }
+
+        var referableParams = {};
+        if (!_.isUndefined(currentParameters)) {
+            referableParams = _.defaults(referableParams, currentParameters);
+        }
+        for (var parent = node.parent; !_.isUndefined(parent); parent = parent.parent) {
+            if (!_.isUndefined(parent.params)) {
+                referableParams = _.defaults(referableParams, parent.params);
+            }
+        }
+        //printJSON(referableParams);
+
+        // TODO: , で split して順に _.default() で集める
+        // TODO: 1個目が配列の場合、2個目以降と扱いを分ける
+        var params = _.get(referableParams, paramsStr);
+        if (!_.isUndefined(params)) {
+            //params.$params = params;
+            return params;
+        }
+
+        // TODO: 該当する名前のパラメータオブジェクトが見つからない場合は例外投げる
+        return {};
     }
 
     // subTree に対してそのまま cloneDeep を呼ぶと、 parent をさかのぼって tree 全体が clone されるので対処
