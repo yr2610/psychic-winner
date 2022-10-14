@@ -2419,6 +2419,10 @@ CL.deletePropertyForAllNodes(root, "marker");
         //});
 
         if (!_.isUndefined(targetNode.tempParams)) {
+            // primitive array のために必要な対応
+            if (!_.isObject(parameters)) {
+                parameters = {};
+            }
             parameters = _.defaults(parameters, targetNode.tempParams);
         }
 
@@ -2427,18 +2431,21 @@ CL.deletePropertyForAllNodes(root, "marker");
             //printJSON(parameters);
 
             // この後の eval 内でプロパティに直接アクセスできるように
-            _.forEach(parameters, function(value, key) {
-                var valueStr = JSON.stringify(value, undefined, 4);
-                //alert(valueStr);
-                //if (_.isString(value)) {
-                //    value = "'" + value + "'";
-                //}
-                //if (_.isArray(value)) {
-                //    value = "[" + value + "]";
-                //}
-                var s = key + "=" + valueStr;
-                eval(s);
-            });
+            // primitive array のために必要な対応
+            if (_.isObject(parameters)) {
+                _.forEach(parameters, function(value, key) {
+                    var valueStr = JSON.stringify(value, undefined, 4);
+                    //alert(valueStr);
+                    //if (_.isString(value)) {
+                    //    value = "'" + value + "'";
+                    //}
+                    //if (_.isArray(value)) {
+                    //    value = "[" + value + "]";
+                    //}
+                    var s = key + "=" + valueStr;
+                    eval(s);
+                });
+            }
 
             forAllNodes_Recurse(subTree, null, -1, function(node, parent, index) {
                 // あるnodeに1個でも false 的なものが渡されたら、それ以下のnode削除
