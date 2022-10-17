@@ -2434,6 +2434,10 @@ CL.deletePropertyForAllNodes(root, "marker");
             // primitive array のために必要な対応
             if (_.isObject(parameters)) {
                 _.forEach(parameters, function(value, key) {
+                    // XXX: key が添字な文字列、value が undefined な値が来ることがあるので対処。理由は調査できてない…
+                    if (_.isUndefined(value)) {
+                        return;
+                    }
                     var valueStr = JSON.stringify(value, undefined, 4);
                     //alert(valueStr);
                     //if (_.isString(value)) {
