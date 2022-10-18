@@ -2485,6 +2485,9 @@ CL.deletePropertyForAllNodes(root, "marker");
                 if (node.comment) {
                     node.comment = node.comment.replace( /\{\{([^\}]+)\}\}/g, replacer);
                 }
+                if (node.imageFilePath) {
+                    node.imageFilePath = node.imageFilePath.replace( /\{\{([^\}]+)\}\}/g, replacer);
+                }
             });
             shrinkChildrenArray(subTree, null, -1);
         }
