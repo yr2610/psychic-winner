@@ -2023,6 +2023,16 @@ CL.deletePropertyForAllNodes(root, "marker");
             return {};
         }
 
+        // object を返すには丸括弧が必要らしい
+        //var paramsArray = eval("([" + paramsStr + "])");
+        //if (paramsArray.length == 1) {
+        //    return paramsArray[0];
+        //}
+
+        // ここでマージしたものを展開してしまう？
+        // TODO: 一番長い配列を調べて展開。配列なら index でアクセス。objectならそのまま。先頭から _.defaults() でマージして push
+
+
         // 直接 object 渡しの場合は { } で囲む
         if (/^\{.+\}$/.test(paramsStr)) {
             // object を返すには丸括弧が必要らしい
