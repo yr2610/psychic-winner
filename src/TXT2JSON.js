@@ -121,6 +121,10 @@ function createUid(len, idList) {
     return s;
 }
 
+if (typeof(global) === 'undefined') {
+    global = Function('return this')();
+}
+
 var shell = new ActiveXObject("WScript.Shell");
 var shellApplication = new ActiveXObject("Shell.Application");
 var fso = new ActiveXObject( "Scripting.FileSystemObject" );
@@ -2023,11 +2027,49 @@ CL.deletePropertyForAllNodes(root, "marker");
             return {};
         }
 
-        // object を返すには丸括弧が必要らしい
-        //var paramsArray = eval("([" + paramsStr + "])");
-        //if (paramsArray.length == 1) {
-        //    return paramsArray[0];
+        var referableParams = {};
+        if (!_.isUndefined(currentParameters)) {
+            referableParams = _.defaults(referableParams, currentParameters);
+        }
+        for (var parent = node.parent; !_.isUndefined(parent); parent = parent.parent) {
+            if (!_.isUndefined(parent.params)) {
+                referableParams = _.defaults(referableParams, parent.params);
+            }
+        }
+
+        // XXX: これだと { foo: "bar" } を { foo: "bar" } としてしまうのでNG
+        //function replacer(m, k) {
+        //    return "referableParams." + k;
         //}
+        //paramsStr = paramsStr.replace( /([_A-Za-z]\w*)/g, replacer);
+        //alert(paramsStr);
+
+        // XXX: 処理が重すぎる
+        var s = "";
+        _.forEach(referableParams, function(value, key) {
+            // XXX: key が添字な文字列、value が undefined な値が来ることがあるので対処。理由は調査できてない…
+            if (_.isUndefined(value)) {
+                return;
+            }
+            //var valueStr = JSON.stringify(value);
+            //alert(valueStr);
+            //if (_.isString(value)) {
+            //    value = "'" + value + "'";
+            //}
+            //if (_.isArray(value)) {
+            //    value = "[" + value + "]";
+            //}
+            //s += key + "=" + valueStr + ";";
+            s += key + "=referableParams." + key + ";";
+        });
+        eval(s);
+
+        // object を返すには丸括弧が必要らしい
+        var paramsArray = eval("([" + paramsStr + "])");
+        //printJSON(paramsArray);
+        if (paramsArray.length == 1) {
+            return paramsArray[0];
+        }
 
         // ここでマージしたものを展開してしまう？
         // TODO: 一番長い配列を調べて展開。配列なら index でアクセス。objectならそのまま。先頭から _.defaults() でマージして push
@@ -2443,12 +2485,13 @@ CL.deletePropertyForAllNodes(root, "marker");
             // この後の eval 内でプロパティに直接アクセスできるように
             // primitive array のために必要な対応
             if (_.isObject(parameters)) {
+                var s = "";
                 _.forEach(parameters, function(value, key) {
                     // XXX: key が添字な文字列、value が undefined な値が来ることがあるので対処。理由は調査できてない…
                     if (_.isUndefined(value)) {
                         return;
                     }
-                    var valueStr = JSON.stringify(value, undefined, 4);
+                    //var valueStr = JSON.stringify(value);
                     //alert(valueStr);
                     //if (_.isString(value)) {
                     //    value = "'" + value + "'";
@@ -2456,9 +2499,10 @@ CL.deletePropertyForAllNodes(root, "marker");
                     //if (_.isArray(value)) {
                     //    value = "[" + value + "]";
                     //}
-                    var s = key + "=" + valueStr;
-                    eval(s);
+                    //var s = key + "=" + valueStr;
+                    s += key + "=parameters." + key + ";";
                 });
+                eval(s);
             }
 
             forAllNodes_Recurse(subTree, null, -1, function(node, parent, index) {
