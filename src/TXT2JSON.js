@@ -2045,27 +2045,45 @@ CL.deletePropertyForAllNodes(root, "marker");
         //alert(paramsStr);
 
         // XXX: 処理が重すぎる
-        var s = "";
-        _.forEach(referableParams, function(value, key) {
-            // XXX: key が添字な文字列、value が undefined な値が来ることがあるので対処。理由は調査できてない…
-            if (_.isUndefined(value)) {
-                return;
-            }
-            //var valueStr = JSON.stringify(value);
-            //alert(valueStr);
-            //if (_.isString(value)) {
-            //    value = "'" + value + "'";
-            //}
-            //if (_.isArray(value)) {
-            //    value = "[" + value + "]";
-            //}
-            //s += key + "=" + valueStr + ";";
-            s += key + "=referableParams." + key + ";";
-        });
-        eval(s);
+        // TODO: 計測するべき
+        //function parseParams(referableParams, paramsStr) {
+        //    var s = "";
+        //    _.forEach(referableParams, function(value, key) {
+        //        // XXX: key が添字な文字列、value が undefined な値が来ることがあるので対処。理由は調査できてない…
+        //        if (_.isUndefined(value)) {
+        //            return;
+        //        }
+        //        s += "var " + key + "=referableParams." + key + ";";
+        //    });
+        //    s += "var result = [" + paramsStr + "];";
+        //    eval(s);
+//
+        //    return result;
+        //}
+        function parseParams(referableParams, paramsStr) {
+            // _.keys(), _.values() は列挙順は保証されてないので一応自前で詰めておく
+            //var keys = _.keys(referableParams);
+            //var values = _.values(referableParams);
+            var keys = [];
+            var values = [];
+            _.forEach(referableParams, function(value, key) {
+                // XXX: key が添字な文字列、value が undefined な値が来ることがあるので対処。理由は調査できてない…
+                if (_.isUndefined(value)) {
+                    return;
+                }
+                keys.push(key);
+                values.push(value);
+            });
+            keys.push("__paramsStr");
+            values.push(paramsStr);
+            var f = Function(keys.join(","), 'return eval("([" + __paramsStr + "])");');
+    
+            return f.apply(null, values);
+        }
+        var paramsArray = parseParams(referableParams, paramsStr);
 
         // object を返すには丸括弧が必要らしい
-        var paramsArray = eval("([" + paramsStr + "])");
+        //var paramsArray = eval("([" + paramsStr + "])");
         //printJSON(paramsArray);
         if (paramsArray.length == 1) {
             return paramsArray[0];
@@ -2564,7 +2582,7 @@ CL.deletePropertyForAllNodes(root, "marker");
                 var parsedParameters = evalParameters(match[2], node, parameters);
             }
             catch(e) {
-                var errorMessage = "パラメータが不正です。";
+                var errorMessage = "パラメータが不正です。\n\n" + e.message;
                 aliasError(errorMessage, node);
             }
 
@@ -2716,7 +2734,7 @@ CL.deletePropertyForAllNodes(root, "marker");
                 var parameters = evalParameters(match[2], node, {});
             }
             catch(e) {
-                var errorMessage = "パラメータが不正です。";
+                var errorMessage = "パラメータが不正です。\n\n" + e.message;
                 aliasError(errorMessage, node);
             }
 
