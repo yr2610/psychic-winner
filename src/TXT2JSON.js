@@ -19,6 +19,18 @@ function printJSON(json) {
     alert(JSON.stringify(json, undefined, 4));
 }
 
+function $templateObject(object, data) {
+    var json = JSON.stringify(object);
+    function replacer(m, k) {
+        var result = data[k];
+
+        return _.isUndefined(result) ? "" : result;
+    }
+    json = json.replace( /\{\{([^\}]+)\}\}/g, replacer);
+
+    return JSON.parse(json);
+}
+
 function makeLineinfoString(filePath, lineNum) {
     var s = "";
 
@@ -2432,49 +2444,67 @@ CL.deletePropertyForAllNodes(root, "marker");
     // node に sub tree の clone を追加する
     // 展開前の状態で追加
     function addSubTree(targetNode, targetIndex, subTreeName, parameters) {
-        //printJSON(parameters);
-        if (_.isArray(parameters)) {
-            var clonedTargetNodes = [];
-            _.forEach(parameters, function(element, index) {
-                var node = cloneSubTree(targetNode);
-                if (!_.isObject(element)) {
-                    element = {
-                        $value: element
-                    };
-                }
-                var elementId = ("$id" in element) ? element.$id : "i" + index;
-                node.id = targetNode.id + "_" + elementId;
+        var subTree;
 
-                node.tempParams = {
-                    $index: index,
-                    $value: element.$value
-                };
+        if (!_.isUndefined(targetNode.tempParams)) {
+            subTree = targetNode.tempParams.subTree;
 
-                var match = node.text.match(/^\*[A-Za-z_]\w*\((.*)\)(\<.*\>)?$/);
-                var paramName = match[1];
-
-                node.text = "*" + subTreeName + "(" + paramName + "[" + index + "])" + match[2];
-                clonedTargetNodes.push(node);
-            });
-
-            targetNode.parent.children[targetIndex] = null;
-            //Array.prototype.splice.apply(targetNode.parent.children, [targetIndex + 1, 0].concat(clonedTargetNodes));
-            var a = targetNode.parent.children;
-            var insertedChildren = a.slice(0, targetIndex+1).concat(clonedTargetNodes).concat(a.slice(targetIndex+1));
-            insertedChildren[targetIndex] = null;
-            targetNode.parent.children = insertedChildren;
-
-            // ここではノードの追加のみ
-            // 処理自体はループの後ろでされる想定
-            return;
+            // primitive array のために必要な対応
+            if (!_.isObject(parameters)) {
+                parameters = {};
+            }
+            parameters = _.defaults(parameters, targetNode.tempParams.params);
         }
+        else {
+            subTree = findSubTree_Recurse(subTreeName, targetNode.parent);
 
-        var subTree = findSubTree_Recurse(subTreeName, targetNode.parent);
+            // みつからなかった
+            if (subTree === null) {
+                var errorMessage = "エイリアス'" + subTreeName + "'は存在しません。";
+                throw new AliasError(errorMessage, targetNode);
+            }
 
-        // みつからなかった
-        if (subTree === null) {
-            var errorMessage = "エイリアス'" + subTreeName + "'は存在しません。";
-            throw new AliasError(errorMessage, targetNode);
+            // ジャグ配列には対応しない
+            //printJSON(parameters);
+            if (_.isArray(parameters)) {
+                var clonedTargetNodes = [];
+                _.forEach(parameters, function(element, index) {
+                    var node = cloneSubTree(targetNode);
+                    if (_.isObject(element)) {
+                        element = _.assign({}, element);
+                    }
+                    else {
+                        element = {
+                            $value: element
+                        };
+                    }
+                    var elementId = ("$id" in element) ? element.$id : "i" + index;
+                    node.id = targetNode.id + "_" + elementId;
+
+                    element.$index = index;
+                    node.tempParams = {
+                        params: element,
+                        subTree: subTree    // clone して使う
+                    };
+
+                    //var match = node.text.match(/^\*[A-Za-z_]\w*\((.*)\)(\<.*\>)?$/);
+                    //var paramName = match[1];
+
+                    //node.text = "*" + subTreeName + "(" + paramName + "[" + index + "])" + match[2];
+                    clonedTargetNodes.push(node);
+                });
+
+                targetNode.parent.children[targetIndex] = null;
+                //Array.prototype.splice.apply(targetNode.parent.children, [targetIndex + 1, 0].concat(clonedTargetNodes));
+                var a = targetNode.parent.children;
+                var insertedChildren = a.slice(0, targetIndex+1).concat(clonedTargetNodes).concat(a.slice(targetIndex+1));
+                insertedChildren[targetIndex] = null;
+                targetNode.parent.children = insertedChildren;
+
+                // ここではノードの追加のみ
+                // 処理自体はループの後ろでされる想定
+                return;
+            }
         }
 
         // まず clone
@@ -2488,14 +2518,6 @@ CL.deletePropertyForAllNodes(root, "marker");
         //    }
         //});
 
-        if (!_.isUndefined(targetNode.tempParams)) {
-            // primitive array のために必要な対応
-            if (!_.isObject(parameters)) {
-                parameters = {};
-            }
-            parameters = _.defaults(parameters, targetNode.tempParams);
-        }
-
         // 変数展開
         if (!_.isEmpty(parameters)) {
             //printJSON(parameters);
@@ -2503,6 +2525,7 @@ CL.deletePropertyForAllNodes(root, "marker");
             // この後の eval 内でプロパティに直接アクセスできるように
             // primitive array のために必要な対応
             if (_.isObject(parameters)) {
+                printJSON(_.isArray(parameters));
                 var s = "";
                 _.forEach(parameters, function(value, key) {
                     // XXX: key が添字な文字列、value が undefined な値が来ることがあるので対処。理由は調査できてない…
@@ -2520,6 +2543,7 @@ CL.deletePropertyForAllNodes(root, "marker");
                     //var s = key + "=" + valueStr;
                     s += key + "=parameters." + key + ";";
                 });
+                alert(s);
                 eval(s);
             }
 
