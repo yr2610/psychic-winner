@@ -22,11 +22,9 @@ function printJSON(json) {
 function $templateObject(object, data) {
     var json = JSON.stringify(object);
     function replacer(m, k) {
-        var result = data[k];
-
-        return _.isUndefined(result) ? "" : result;
+        return data[k];
     }
-    json = json.replace( /\{\{([^\}]+)\}\}/g, replacer);
+    json = json.replace(/\{\{([^\}]+)\}\}/g, replacer);
 
     return JSON.parse(json);
 }
@@ -2462,10 +2460,12 @@ CL.deletePropertyForAllNodes(root, "marker");
                     $value: element.$value
                 };
 
+                var paramJSON = JSON.stringify(element);
                 var match = node.text.match(/^\*[A-Za-z_]\w*\((.*)\)(\<.*\>)?$/);
-                var paramName = match[1];
+                //var paramName = match[1];
 
-                node.text = "*" + subTreeName + "(" + paramName + "[" + index + "])" + match[2];
+                //node.text = "*" + subTreeName + "(" + paramName + "[" + index + "])" + match[2];
+                node.text = "*" + subTreeName + "(" + paramJSON + ")" + match[2];
                 clonedTargetNodes.push(node);
             });
 
@@ -2515,6 +2515,11 @@ CL.deletePropertyForAllNodes(root, "marker");
             // この後の eval 内でプロパティに直接アクセスできるように
             // primitive array のために必要な対応
             if (_.isObject(parameters)) {
+                // XXX: いろいろやったらややこしいことになったので一旦はシンプルに追加
+                // XXX: ただこれをやると JSON.stringify が使えなくなるので極力避けたい
+                // XXX: ここではローカル変数で宣言して evalParameters にその $params 渡すとか…？
+                parameters.$params = _.assign(parameters);
+
                 var s = "";
                 _.forEach(parameters, function(value, key) {
                     // XXX: key が添字な文字列、value が undefined な値が来ることがあるので対処。理由は調査できてない…
@@ -2530,8 +2535,9 @@ CL.deletePropertyForAllNodes(root, "marker");
                     //    value = "[" + value + "]";
                     //}
                     //var s = key + "=" + valueStr;
-                    s += key + "=parameters." + key + ";";
+                    s += "var " + key + "=parameters." + key + ";";
                 });
+                //s += "var $params=_.assign(parameters);"
                 eval(s);
             }
 
