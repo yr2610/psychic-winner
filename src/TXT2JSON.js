@@ -19,6 +19,18 @@ function printJSON(json) {
     alert(JSON.stringify(json, undefined, 4));
 }
 
+function $templateObject(object, data) {
+    var json = JSON.stringify(object);
+    function replacer(m, k) {
+        var result = data[k];
+
+        return _.isUndefined(result) ? "" : result;
+    }
+    json = json.replace( /\{\{([^\}]+)\}\}/g, replacer);
+
+    return JSON.parse(json);
+}
+
 function makeLineinfoString(filePath, lineNum) {
     var s = "";
 
