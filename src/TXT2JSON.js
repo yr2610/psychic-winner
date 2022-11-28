@@ -2100,7 +2100,41 @@ CL.deletePropertyForAllNodes(root, "marker");
         }
 
         // ここでマージしたものを展開してしまう？
-        // TODO: 一番長い配列を調べて展開。配列なら index でアクセス。objectならそのまま。先頭から _.defaults() でマージして push
+        // 一番長い配列を調べて展開。配列なら index でアクセス。objectならそのまま。先頭から _.defaults() でマージして push
+        var maxArrayElem = _.max(paramsArray, function(elem) {
+            return _.isArray(elem) ? elem.length : 0;
+        });
+        var maxArrayLength = _.isArray(maxArrayElem) ? maxArrayElem.length : 0;
+        if (maxArrayLength == 0) {
+            var mergedConst = {};
+            _.forEach(paramsArray, function(elem) {
+                if (!_.isArray(elem)) {
+                    mergedConst = _.defaults(mergedConst, elem);
+                }
+            });
+            return mergedConst;
+        }
+        var mergedArray = [];
+        _.forEach(_.range(maxArrayLength), function(i) {
+            var o = {};
+            _.forEach(paramsArray, function(elem) {
+                if (_.isArray(elem)) {
+                    if (i < elem.length) {
+                        if (_.isObject(elem[i])) {
+                            o = _.defaults(o, elem[i]);
+                        }
+                        else {
+                            o = _.defaults(o, {$value: elem[i]});
+                        }
+                    }
+                }
+                else {
+                    o = _.defaults(o, elem);
+                }
+            });
+            mergedArray.push(o);
+        });
+        return mergedArray;
 
 
         // 直接 object 渡しの場合は { } で囲む
