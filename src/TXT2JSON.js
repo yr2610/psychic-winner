@@ -2136,36 +2136,35 @@ CL.deletePropertyForAllNodes(root, "marker");
         });
         return mergedArray;
 
-
-        // 直接 object 渡しの場合は { } で囲む
-        if (/^\{.+\}$/.test(paramsStr)) {
-            // object を返すには丸括弧が必要らしい
-            var params = eval("(" + paramsStr + ")");
-            //params.$params = params;
-            return params;
-        }
-
-        var referableParams = {};
-        if (!_.isUndefined(currentParameters)) {
-            referableParams = _.defaults(referableParams, currentParameters);
-        }
-        for (var parent = node.parent; !_.isUndefined(parent); parent = parent.parent) {
-            if (!_.isUndefined(parent.params)) {
-                referableParams = _.defaults(referableParams, parent.params);
-            }
-        }
-        //printJSON(referableParams);
-
-        // TODO: , で split して順に _.default() で集める
-        // TODO: 1個目が配列の場合、2個目以降と扱いを分ける
-        var params = _.get(referableParams, paramsStr);
-        if (!_.isUndefined(params)) {
-            //params.$params = params;
-            return params;
-        }
-
-        // TODO: 該当する名前のパラメータオブジェクトが見つからない場合は例外投げる
-        return {};
+//        // 直接 object 渡しの場合は { } で囲む
+//        if (/^\{.+\}$/.test(paramsStr)) {
+//            // object を返すには丸括弧が必要らしい
+//            var params = eval("(" + paramsStr + ")");
+//            //params.$params = params;
+//            return params;
+//        }
+//
+//        var referableParams = {};
+//        if (!_.isUndefined(currentParameters)) {
+//            referableParams = _.defaults(referableParams, currentParameters);
+//        }
+//        for (var parent = node.parent; !_.isUndefined(parent); parent = parent.parent) {
+//            if (!_.isUndefined(parent.params)) {
+//                referableParams = _.defaults(referableParams, parent.params);
+//            }
+//        }
+//        //printJSON(referableParams);
+//
+//        // TODO: , で split して順に _.default() で集める
+//        // TODO: 1個目が配列の場合、2個目以降と扱いを分ける
+//        var params = _.get(referableParams, paramsStr);
+//        if (!_.isUndefined(params)) {
+//            //params.$params = params;
+//            return params;
+//        }
+//
+//        // TODO: 該当する名前のパラメータオブジェクトが見つからない場合は例外投げる
+//        return {};
     }
 
     // subTree に対してそのまま cloneDeep を呼ぶと、 parent をさかのぼって tree 全体が clone されるので対処
