@@ -1108,6 +1108,13 @@ while (!srcLines.atEnd) {
         }
         //printJSON(o);
 
+        // 関数定義な文字列は関数にする
+        _.forEach(o, function (v, k) {
+            if (_.isString(v) && v.match(/^function/)) {
+                o[k] = Function.call(this, 'return ' + v)();
+            }
+        });
+
 //        // プリミティブな配列を { $value: value } な配列にする
 //        function primitiveArrayToObjectArray(value, key, collection) {
 //            // XXX: 要素数 1 以上前提の作り
@@ -2117,6 +2124,7 @@ CL.deletePropertyForAllNodes(root, "marker");
         var mergedArray = [];
         _.forEach(_.range(maxArrayLength), function(i) {
             var o = {};
+            var functions = [];
             _.forEach(paramsArray, function(elem) {
                 if (_.isArray(elem)) {
                     if (i < elem.length) {
@@ -2128,9 +2136,16 @@ CL.deletePropertyForAllNodes(root, "marker");
                         }
                     }
                 }
+                else if (_.isFunction(elem)) {
+                    functions.push(elem);
+                }
                 else {
                     o = _.defaults(o, elem);
                 }
+            });
+            // 関数が渡された場合、引数に渡された順に実行
+            _.forEach(functions, function(f) {
+                o = f(o);
             });
             mergedArray.push(o);
         });
@@ -2494,11 +2509,11 @@ CL.deletePropertyForAllNodes(root, "marker");
                 };
 
                 var paramJSON = JSON.stringify(element);
-                var match = node.text.match(/^\*[A-Za-z_]\w*\((.*)\)(\<.*\>)?$/);
+                //var match = node.text.match(/^\*[A-Za-z_]\w*\((.*)\)$/);
                 //var paramName = match[1];
 
                 //node.text = "*" + subTreeName + "(" + paramName + "[" + index + "])" + match[2];
-                node.text = "*" + subTreeName + "(" + paramJSON + ")" + match[2];
+                node.text = "*" + subTreeName + "(" + paramJSON + ")";
                 clonedTargetNodes.push(node);
             });
 
@@ -2623,7 +2638,7 @@ CL.deletePropertyForAllNodes(root, "marker");
             if (parent === null) {
                 return;
             }
-            var match = node.text.trim().match(/^\*([A-Za-z_]\w*)\((.*)\)(\<([A-Za-z_]\w*)\((.*)\)\>)?$/);
+            var match = node.text.trim().match(/^\*([A-Za-z_]\w*)\((.*)\)$/);
             if (match === null) {
                 return;
             }
@@ -2637,42 +2652,42 @@ CL.deletePropertyForAllNodes(root, "marker");
                 aliasError(errorMessage, node);
             }
 
-            if (!_.isArray(parsedParameters)) {
-                if (match[4] != "") {
-                    (function(){
-                        var functionName = match[4];
-                        var f = null;
-                        for (var parent = node.parent; parent !== null; parent = parent.parent) {
-                            if (_.isUndefined(parent.params)) {
-                                continue;
-                            }
-                            if (functionName in parent.params) {
-                                var s = parent.params[functionName];
-                                f = Function.call(this, 'return ' + s)();
-                                break;
-                            }
-                        }
-                        // TODO: 該当する関数が見つからない時にエラー出す
-                        if (f) {
-                            // 関数内で直接アクセスできるように
-                            if (!_.isUndefined(node.tempParams)) {
-                                _.forEach(node.tempParams, function(value, key) {
-                                    var valueStr = JSON.stringify(value, undefined, 4);
-                                    var s = key + "=" + valueStr;
-                                    eval(s);
-                                });
-                            }
-                            
-                            var inputParameters = _.assign({}, parsedParameters);
-                            // FIXME: 一旦全部見えるようにしておく。渡されたものだけ参照可能になるようにするべき
-                            inputParameters = _.defaults(inputParameters, parameters);
-                            var outputParameters = f(inputParameters);
-                            // 触らなかったのはそのまま使えるように
-                            parsedParameters = _.defaults(outputParameters, parsedParameters);
-                        }
-                    })();
-                }
-            }
+            //if (!_.isArray(parsedParameters)) {
+            //    if (match[4] != "") {
+            //        (function(){
+            //            var functionName = match[4];
+            //            var f = null;
+            //            for (var parent = node.parent; parent !== null; parent = parent.parent) {
+            //                if (_.isUndefined(parent.params)) {
+            //                    continue;
+            //                }
+            //                if (functionName in parent.params) {
+            //                    var s = parent.params[functionName];
+            //                    f = Function.call(this, 'return ' + s)();
+            //                    break;
+            //                }
+            //            }
+            //            // TODO: 該当する関数が見つからない時にエラー出す
+            //            if (f) {
+            //                // 関数内で直接アクセスできるように
+            //                if (!_.isUndefined(node.tempParams)) {
+            //                    _.forEach(node.tempParams, function(value, key) {
+            //                        var valueStr = JSON.stringify(value, undefined, 4);
+            //                        var s = key + "=" + valueStr;
+            //                        eval(s);
+            //                    });
+            //                }
+            //                
+            //                var inputParameters = _.assign({}, parsedParameters);
+            //                // FIXME: 一旦全部見えるようにしておく。渡されたものだけ参照可能になるようにするべき
+            //                inputParameters = _.defaults(inputParameters, parameters);
+            //                var outputParameters = f(inputParameters);
+            //                // 触らなかったのはそのまま使えるように
+            //                parsedParameters = _.defaults(outputParameters, parsedParameters);
+            //            }
+            //        })();
+            //    }
+            //}
 
             addSubTree(node, index, subTreeName, parsedParameters);
         });
@@ -2777,7 +2792,7 @@ CL.deletePropertyForAllNodes(root, "marker");
             return true;
         }
         // XXX: コピペを何とかする
-        var match = node.text.trim().match(/^\*([A-Za-z_]\w*)\((.*)\)(\<([A-Za-z_]\w*)\((.*)\)\>)?$/);
+        var match = node.text.trim().match(/^\*([A-Za-z_]\w*)\((.*)\)$/);
         if (match !== null) {
             var subTreeName = match[1];
 
@@ -2790,40 +2805,40 @@ CL.deletePropertyForAllNodes(root, "marker");
             }
 
             // XXX: コピペを何とかする
-            if (!_.isArray(parameters)) {
-                if (match[4] != "") {
-                    (function(){
-                        var functionName = match[4];
-                        var f = null;
-                        for (var parent = node.parent; parent !== null; parent = parent.parent) {
-                            if (_.isUndefined(parent.params)) {
-                                continue;
-                            }
-                            if (functionName in parent.params) {
-                                var s = parent.params[functionName];
-                                f = Function.call(this, 'return ' + s)();
-                                break;
-                            }
-                        }
-                        // TODO: 該当する関数が見つからない時にエラー出す
-                        if (f) {
-                            // 関数内で直接アクセスできるように
-                            if (!_.isUndefined(node.tempParams)) {
-                                _.forEach(node.tempParams, function(value, key) {
-                                    var valueStr = JSON.stringify(value, undefined, 4);
-                                    var s = key + "=" + valueStr;
-                                    eval(s);
-                                });
-                            }
-                            
-                            var inputParameters = _.assign({}, parameters);
-                            var outputParameters = f(inputParameters);
-                            // 触らなかったのはそのまま使えるように
-                            parameters = _.defaults(outputParameters, parameters);
-                        }
-                    })();
-                }
-            }
+            //if (!_.isArray(parameters)) {
+            //    if (match[4] != "") {
+            //        (function(){
+            //            var functionName = match[4];
+            //            var f = null;
+            //            for (var parent = node.parent; parent !== null; parent = parent.parent) {
+            //                if (_.isUndefined(parent.params)) {
+            //                    continue;
+            //                }
+            //                if (functionName in parent.params) {
+            //                    var s = parent.params[functionName];
+            //                    f = Function.call(this, 'return ' + s)();
+            //                    break;
+            //                }
+            //            }
+            //            // TODO: 該当する関数が見つからない時にエラー出す
+            //            if (f) {
+            //                // 関数内で直接アクセスできるように
+            //                if (!_.isUndefined(node.tempParams)) {
+            //                    _.forEach(node.tempParams, function(value, key) {
+            //                        var valueStr = JSON.stringify(value, undefined, 4);
+            //                        var s = key + "=" + valueStr;
+            //                        eval(s);
+            //                    });
+            //                }
+            //                
+            //                var inputParameters = _.assign({}, parameters);
+            //                var outputParameters = f(inputParameters);
+            //                // 触らなかったのはそのまま使えるように
+            //                parameters = _.defaults(outputParameters, parameters);
+            //            }
+            //        })();
+            //    }
+            //}
 
             try {
                 addSubTree(node, index, subTreeName, parameters);
