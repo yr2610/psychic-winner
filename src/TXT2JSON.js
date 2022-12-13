@@ -167,6 +167,7 @@ var backupDirectoryName = "bak";
 var intermediateDirectoryName = "intermediate";
 
 // 画像置き場
+// TODO: 廃止
 var imageDirectoryName = "images";
 
 var includePath = [];
@@ -197,6 +198,13 @@ var conf = readConfigFile(confFileName);
 var entryFilePath = filePath;
 var entryProject = fso.GetParentFolderName(entryFilePath);
 var entryProjectFromRoot = CL.getRelativePath(conf.$rootDirectory, entryProject);
+
+// XXX: entry source からの相対パスを root からの絶対パスに変換
+// XXX: 名前が機能を十分に説明してないけど、基本的に source 以下のファイル以外を変換するケースはないと思うので…
+function $abspath(path) {
+    var entrySourceDirectoryFromRoot = fso.BuildPath(entryProjectFromRoot, sourceDirectoryName);
+    return "/" + fso.BuildPath(entrySourceDirectoryFromRoot, path);
+}
 
 var allFilePaths = [];
 
@@ -429,7 +437,9 @@ function getDataFromTableRow(srcData, parentNode, tableHeaderIds) {
     return data;
 }
 
-function parseComment(text, projectDirectoryFromRoot, imageDirectory) {
+function parseComment(text, lineObj, imageDirectory) {
+    var projectDirectoryFromRoot = lineObj.projectDirectory;
+    var fileParentFolderAbs = sourceLocalPathToAbsolutePath(fso.GetParentFolderName(lineObj.filePath), projectDirectoryFromRoot);
     // 複数行テキストに対応するために .+ じゃなくて [\s\S]+
     var re = /^([\s\S]+)\s+\[\^(.+)\]$/;
     var commentMatch = text.trim().match(re);
@@ -454,27 +464,6 @@ function parseComment(text, projectDirectoryFromRoot, imageDirectory) {
     }
 
     var imageFilePath = imageMatch[1];
-        
-    // エントリープロジェクトからの相対パスを求める
-    function getImageFilePathFromEntryProject(imageFilePath, projectDirectoryFromRoot, imageDirectory) {
-        if (imageFilePath.charAt(0) != "/") {
-            if (imageDirectory) {
-                imageFilePath = fso.BuildPath(imageDirectory, imageFilePath);
-            }
-        }
-        else {
-            imageFilePath = imageFilePath.slice(1);
-        }
-
-        var path = directoryLocalPathToAbsolutePath(imageFilePath, projectDirectoryFromRoot, imageDirectoryName);
-
-        return absolutePathToDirectoryLocalPath(path, entryProjectFromRoot);
-    }
-
-    imageFilePath = getImageFilePathFromEntryProject(imageFilePath, projectDirectoryFromRoot, imageDirectory);
-
-    // TODO: entry file のプロジェクトからの相対パスにする
-    //imageFilePath = fso.BuildPath(fso.GetParentFolderName(filePath), image);
     
     return {
         text: text,
@@ -812,7 +801,7 @@ function parseUnorderedList(lineObj) {
         return !_.isUndefined(node.variables.imagePath);
     }).variables.imagePath;
 
-    var commentResult = parseComment(text, lineObj.projectDirectory, imageDirectory);
+    var commentResult = parseComment(text, lineObj, imageDirectory);
     var comment;
     var imageFilePath;
     if (commentResult) {
@@ -2874,6 +2863,39 @@ CL.deletePropertyForAllNodes(root, "marker");
     var endTime = performance.now();
     //WScript.Echo(endTime - startTime);
 })();
+
+// imageFilePath をエントリープロジェクトからの相対に変換
+forAllNodes_Recurse(root, null, -1, function(node, parent, index) {
+    if (_.isUndefined(node.imageFilePath)) {
+        return;
+    }
+    var lineObj = node.lineObj;
+    var projectDirectoryFromRoot = lineObj.projectDirectory;
+    var fileParentFolderAbs = sourceLocalPathToAbsolutePath(fso.GetParentFolderName(lineObj.filePath), projectDirectoryFromRoot);
+
+    // エントリープロジェクトからの相対パスを求める
+    function getImageFilePathFromEntryProject(imageFilePath) {
+        if (imageFilePath.charAt(0) != "/") {
+            //if (imageDirectory) {
+            //    // XXX: imageDirectory の仕様は廃止の方がいい
+            //    imageFilePath = fso.BuildPath(imageDirectory, imageFilePath);
+            //}
+            imageFilePath = fso.BuildPath(fileParentFolderAbs, imageFilePath);
+        }
+        else {
+            imageFilePath = getAbsoluteProjectPath(imageFilePath.slice(1));
+        }
+
+        return absolutePathToDirectoryLocalPath(imageFilePath, entryProjectFromRoot);
+    }
+
+    node.imageFilePath = getImageFilePathFromEntryProject(node.imageFilePath);
+
+    // TODO: entry file のプロジェクトからの相対パスにする
+    //imageFilePath = fso.BuildPath(fso.GetParentFolderName(filePath), image);
+    
+});
+
 
 try {
 
