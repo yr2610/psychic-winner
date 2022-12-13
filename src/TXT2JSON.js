@@ -166,10 +166,6 @@ var backupDirectoryName = "bak";
 // 中間生成ファイル置き場
 var intermediateDirectoryName = "intermediate";
 
-// 画像置き場
-// TODO: 廃止
-var imageDirectoryName = "images";
-
 var includePath = [];
 
 // メインソースファイルのrootフォルダはデフォルトで最優先で探す
@@ -437,7 +433,7 @@ function getDataFromTableRow(srcData, parentNode, tableHeaderIds) {
     return data;
 }
 
-function parseComment(text, lineObj, imageDirectory) {
+function parseComment(text, lineObj) {
     var projectDirectoryFromRoot = lineObj.projectDirectory;
     var fileParentFolderAbs = sourceLocalPathToAbsolutePath(fso.GetParentFolderName(lineObj.filePath), projectDirectoryFromRoot);
     // 複数行テキストに対応するために .+ じゃなくて [\s\S]+
@@ -795,13 +791,7 @@ function parseUnorderedList(lineObj) {
         text += "\n" + line;
     }
 
-    // FIXME: 仕様を決める
-    // 上にさかのぼって最初に見つかったやつ採用
-    var imageDirectory = _.findLast(stack.__a, function(node) {
-        return !_.isUndefined(node.variables.imagePath);
-    }).variables.imagePath;
-
-    var commentResult = parseComment(text, lineObj, imageDirectory);
+    var commentResult = parseComment(text, lineObj);
     var comment;
     var imageFilePath;
     if (commentResult) {
@@ -1091,7 +1081,6 @@ while (!srcLines.atEnd) {
             o = jsyaml.safeLoad(s);
         }
         catch (e) {
-            // FIXME: Error という関数名を変えないと catch できないはず
             var errorMessage = "YAML の parse に失敗しました。";
             MyError(errorMessage, lineObj.filePath, lineObj.lineNum);
         }
