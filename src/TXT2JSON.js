@@ -2102,7 +2102,6 @@ CL.deletePropertyForAllNodes(root, "marker");
         var mergedArray = [];
         _.forEach(_.range(maxArrayLength), function(i) {
             var o = {};
-            var functions = [];
             _.forEach(paramsArray, function(elem) {
                 if (_.isArray(elem)) {
                     if (i < elem.length) {
@@ -2114,16 +2113,15 @@ CL.deletePropertyForAllNodes(root, "marker");
                         }
                     }
                 }
+                // 関数が渡された場合、引数に渡された順に実行
                 else if (_.isFunction(elem)) {
-                    functions.push(elem);
+                    // o はこの関数で作った object なので clone 不要
+                    // 関数の中で直接書き換えてもOK
+                    o = elem(o);
                 }
                 else {
                     o = _.defaults(o, elem);
                 }
-            });
-            // 関数が渡された場合、引数に渡された順に実行
-            _.forEach(functions, function(f) {
-                o = f(o);
             });
             mergedArray.push(o);
         });
