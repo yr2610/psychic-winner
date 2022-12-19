@@ -601,15 +601,15 @@ function parseHeading(lineObj) {
 }
 
 function parseUnorderedList(lineObj) {
-    // 行頭に全角スペースがないかのチェック
+    // 行頭に全角スペース、タブがないかのチェック
     (function () {
         var fullwidthSpaceMatch = line.match(/^([\s　]+).*$/);
         if (!fullwidthSpaceMatch) {
             return;
         }
-        var regex = /　/g;
+        var regex = /[　\t]/g;
         if (regex.test(fullwidthSpaceMatch[1])) {
-            var errorMessage = "行頭に全角スペースが含まれています";
+            var errorMessage = "行頭に全角スペースもしくはタブ文字が含まれています";
             MyError(errorMessage, lineObj.filePath, lineObj.lineNum);
         }
     })();
@@ -642,6 +642,16 @@ function parseUnorderedList(lineObj) {
 
     while (stack.peek().kind == kindUL && stack.peek().indent >= indent) {
         stack.pop();
+    }
+    if (stack.peek().kind != kindUL && indent > 0) {
+        var errorMessage = "一番上の階層のノードがインデントされています";
+
+        throw new ParseError(errorMessage, lineObj);
+    }
+    if (stack.peek().kind == kindUL && (indent - stack.peek().indent < 2)) {
+        var errorMessage = "インデントはスペース 2 個以上必要です";
+
+        throw new ParseError(errorMessage, lineObj);
     }
 
     var uidMatch = text.match(/^\[#([\w\-]+)\]\s+(.+)$/);
