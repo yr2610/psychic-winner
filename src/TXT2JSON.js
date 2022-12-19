@@ -853,6 +853,15 @@ function parseUnorderedList(lineObj) {
 
     text = text.trim();
 
+    if (/\t/.test(text)) {
+        var errorMessage = "テキストにタブ文字が含まれています";
+        throw new ParseError(errorMessage, lineObj);
+    }
+    if (/\t/.test(comment)) {
+        var errorMessage = "コメントにタブ文字が含まれています";
+        throw new ParseError(errorMessage, lineObj);
+    }
+
     var item = {
         kind: kindUL,
         indent: indent,
