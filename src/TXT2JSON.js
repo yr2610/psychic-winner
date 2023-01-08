@@ -1,4 +1,4 @@
-// file の ReadLine(), AtEndOfStream 風の仕様で配列にアクセスするための機構を用意
+﻿// file の ReadLine(), AtEndOfStream 風の仕様で配列にアクセスするための機構を用意
 function ArrayReader(array) { this.__a = array; this.index = 0; this.atEnd = false; }
 ArrayReader.prototype.read = function(o) { if (this.atEnd) return null; if (this.index + 1 >= this.__a.length) this.atEnd = true; return this.__a[this.index++]; }
 
@@ -2610,9 +2610,7 @@ CL.deletePropertyForAllNodes(root, "marker");
                     }
                     return parameter;
                 }
-                for (var prevText = null; prevText != node.text; prevText = node.text) {
-                    node.text = node.text.replace( /\{\{([^\}]+)\}\}/g, replacer);
-                }
+                node.text = node.text.replace( /\{\{([^\}]+)\}\}/g, replacer);
                 if (toDelete) {
                     node.parent.children[index] = null;
                     return;
