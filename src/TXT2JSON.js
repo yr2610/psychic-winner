@@ -2610,16 +2610,25 @@ CL.deletePropertyForAllNodes(root, "marker");
                     }
                     return parameter;
                 }
+                toDelete = false;
                 node.text = node.text.replace( /\{\{([^\}]+)\}\}/g, replacer);
                 if (toDelete) {
                     node.parent.children[index] = null;
                     return;
                 }
                 if (node.comment) {
+                    toDelete = false;
                     node.comment = node.comment.replace( /\{\{([^\}]+)\}\}/g, replacer);
+                    if (toDelete) {
+                        delete node.comment;
+                    }
                 }
                 if (node.imageFilePath) {
+                    toDelete = false;
                     node.imageFilePath = node.imageFilePath.replace( /\{\{([^\}]+)\}\}/g, replacer);
+                    if (toDelete) {
+                        delete node.imageFilePath;
+                    }
                 }
             });
             shrinkChildrenArray(subTree, null, -1);
