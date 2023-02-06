@@ -9,6 +9,7 @@
     <script language="JavaScript" src="src/lib/es6-sham.js"></script>
     <script language="JavaScript" src="src/lib/lodash.js"></script>
     <script language="JavaScript" src="src/lib/js-yaml.js"></script>
+    <script language="JavaScript" src="src/lib/WSHLibrary/EncodeUtility.js"></script>
     <script language="JavaScript" src="src/utilities.js"></script>
     <script language="JavaScript" src="src/constants.js"></script>
     <script language="JavaScript" src="src/CLCommon.js"></script>
