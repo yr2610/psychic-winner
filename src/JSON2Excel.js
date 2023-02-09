@@ -3,8 +3,12 @@
     WScript.Quit();
 }
 
+function alert(s) {
+    WScript.Echo(s);
+}
+
 function printJSON(json) {
-    WScript.Echo(JSON.stringify(json, undefined, 4));
+    alert(JSON.stringify(json, undefined, 4));
 }
 
 function findAllValuesInRange(range, targetValue)
