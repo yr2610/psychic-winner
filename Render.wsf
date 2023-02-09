@@ -10,6 +10,7 @@
     <script language="JavaScript" src="src/lib/lodash.js"></script>
     <script language="JScript.Encode" src="src/lib/lz-string.jse"></script>
     <script language="JavaScript" src="src/lib/sha.js"></script>
+    <script language="JavaScript" src="src/lib/WSHLibrary/EncodeUtility.js"></script>
     <script language="JavaScript" src="src/utilities.js"></script>
     <script language="JavaScript" src="src/constants.js"></script>
     <script language="VBScript" src="src/convertToSafeArray2d.vbs"></script>

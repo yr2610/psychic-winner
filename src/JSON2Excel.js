@@ -449,8 +449,6 @@ else {
 // certutil 利用
 // id が key の object を返す
 function getSheetsHash(sheets) {
-    var tempDir = fso.GetSpecialFolder(2);
-    var shellExec = {};
     var result = {};
 
     for (var i = 0; i < sheets.length; i++) {
@@ -458,74 +456,8 @@ function getSheetsHash(sheets) {
         var s = JSON.stringify(nodeH1);
         var id = nodeH1.id;
 
-        var tempFile = fso.GetTempName();
-        var filePath = fso.BuildPath(tempDir, tempFile);
-
-        shellExec[id] = {};
-
-        CL.writeTextFileUTF8(s, filePath);
-        shellExec[id].filePath = filePath;
-
-        var command = "certUtil -hashfile " + filePath + " SHA256";
-        shellExec[id].exec = shell.Exec(command);
-    }
-
-    for (cnt = 0; ; cnt++) {
-        // foreach の中で delete するとダメなので後でまとめて delete
-        var idToDelete = [];
-        _.forEach(shellExec, function(n, key) {
-            var exec = n.exec;
-            if (exec.Status == 0) {
-                return;
-            }
-
-            fso.DeleteFile(n.filePath, true);
-
-            if (exec.ExitCode != 0) {
-                var message;
-
-                _.forEach(shellExec, function(n, key) {
-                    if (fso.FileExists(n.filePath)) {
-                        fso.DeleteFile(n.filePath, true);
-                    }
-                });
-                
-                if (!exec.StdErr.AtEndOfStream) {
-                    message = parserExec.StdErr.ReadAll();
-                }
-                else {
-                    message = "certUtil でエラーが発生しました";
-                }
-            
-                Error(message);
-            }
-            
-            exec.StdOut.SkipLine();
-            result[key] = exec.StdOut.ReadLine();
-
-            idToDelete.push(key);
-        });
-
-        idToDelete.forEach(function(id) {
-            delete shellExec[id];
-        });
- 
-        if (_.isEmpty(shellExec)) {
-            break;
-        }
-
-        //  5秒経過したら終了
-        if (cnt >= 50) {
-            _.forEach(shellExec, function(n, key) {
-                n.exec.Terminate();
-                if (fso.FileExists(n.filePath)) {
-                    fso.DeleteFile(n.filePath, true);
-                }
-            });
-            Error("certUtil で問題発生（タイムアウト）");
-        }
- 
-        WScript.Sleep(100);
+        var bin = EncodeUtility.str2bin(s);
+        result[id] = EncodeUtility.sha1(bin);
     }
     
     return result;
