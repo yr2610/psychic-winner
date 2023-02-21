@@ -2108,15 +2108,9 @@ CL.deletePropertyForAllNodes(root, "marker");
         var maxArrayElem = _.max(paramsArray, function(elem) {
             return _.isArray(elem) ? elem.length : 0;
         });
-        var maxArrayLength = _.isArray(maxArrayElem) ? maxArrayElem.length : 0;
+        var maxArrayLength = _.isArray(maxArrayElem) ? maxArrayElem.length : 1;
         if (maxArrayLength == 0) {
-            var mergedConst = {};
-            _.forEach(paramsArray, function(elem) {
-                if (!_.isArray(elem)) {
-                    mergedConst = _.defaults(mergedConst, elem);
-                }
-            });
-            return mergedConst;
+            // TODO: 例外投げる
         }
         var mergedArray = [];
         _.forEach(_.range(maxArrayLength), function(i) {
@@ -2144,7 +2138,8 @@ CL.deletePropertyForAllNodes(root, "marker");
             });
             mergedArray.push(o);
         });
-        return mergedArray;
+        // ほぼ意味ないけど、要素数1の場合はobjectを返す
+        return (mergedArray.length == 1) ? mergedArray[0] : mergedArray;
 
 //        // 直接 object 渡しの場合は { } で囲む
 //        if (/^\{.+\}$/.test(paramsStr)) {
