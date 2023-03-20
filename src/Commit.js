@@ -224,6 +224,10 @@ if (!historySheet)
     historySheet.Name = "history";
     historySheet.Move(null, book.Worksheets(book.Worksheets.Count));
     historySheet.Visible = false;
+
+    // 初回 commit 時は index シートが選択された状態にする
+    var indexSheet = CL.getIndexSheet(book, root);
+    indexSheet.Select();
 }
 
 // history シートを新しいデータで更新
