@@ -3318,13 +3318,11 @@ Error(s);
 
 // TODO: root.id 廃止。 commit, update とかで使ってるので修正範囲は広い
 (function() {
-    // XXX: とりあえず現在時刻で
-    var date = new Date();
-    var seed = date.getTime();
-    var random = createXor128(seed);
-
-    // 特に意味はないけど、通常の id のより長めにしておく
-    root.id = createRandomId(16, random);
+    // root.children を基に hash を求める
+    var k = JSON.stringify(root.children);
+    var shaObj = new jsSHA("SHA-256", "TEXT", { encoding: "UTF8" });
+    shaObj.update(k);
+    root.id = shaObj.getHash("HEX");
 })();
 
 
