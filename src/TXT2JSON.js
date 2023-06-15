@@ -189,6 +189,13 @@ includePath.push(fso.GetParentFolderName(filePath));
 })();
 
 var confFileName = "conf.yml";
+(function(){
+    var baseName = fso.GetBaseName(filePath);
+    baseName = baseName.replace(/_index$/, "");
+    if (baseName != "index") {
+        confFileName = baseName + "_" + confFileName;
+    }
+})();
 var conf = readConfigFile(confFileName);
 
 var entryFilePath = filePath;
