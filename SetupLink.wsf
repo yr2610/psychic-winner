@@ -46,7 +46,9 @@ var folder = fs.GetFolder(folderPath);
 var thisFolder = fs.getParentFolderName(WScript.ScriptFullName);
 
 //  ショートカットファイル作成
-var lnkFilePath = fs.BuildPath(folderPath, "Make - " + fs.GetBaseName(targetFilePath) + ".lnk");
+var targetName = fs.GetBaseName(targetFilePath);
+targetName = targetName.replace(/_index$/, "");
+var lnkFilePath = fs.BuildPath(folderPath, "Make - " + targetName + ".lnk");
 var lnkfile = shell.CreateShortcut(lnkFilePath);
 
 //  ショートカットの参照先パスを設定
