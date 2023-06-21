@@ -242,8 +242,11 @@ stack.push(root);
     if (!_.isUndefined(conf.$templateValues)) {
         _.assign(root.variables, conf.$templateValues);
     }
-    
+
+    // XXX: 無視の方を指定する方が良いか
     var variableList = [
+        "templateFilename",
+        "ignoreColumnId",
         "outputFilename",
         "projectId",
         "indexSheetname",
