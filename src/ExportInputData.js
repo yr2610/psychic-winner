@@ -239,8 +239,12 @@ function getCheckSheetValuesFromSheet(nodeH1, book, templateData)
 
     // check cell の左からの index
     var indicesToSave = _.range(0, checkCellsWidth);
-    table.other.indicesToSave.forEach(function(element, index, array) {
-        indicesToSave.push(checkCellsWidth + element);
+    var ignoreColumnId = root.variables.ignoreColumnId;
+    _.forEach(table.other.columnID, function(v, k) {
+        if (!_.isUndefined(ignoreColumnId) && _.includes(ignoreColumnId, k)) {
+            return;
+        }
+        indicesToSave.push(checkCellsWidth + v);
     });
 
     var headers = nodeH1.tableHeaders.map(function(n) {
