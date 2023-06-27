@@ -1165,7 +1165,9 @@ while (!srcLines.atEnd) {
             paramNode.params = {};
         }
         //_.assign(paramNode.params, o);  // 上書きする
-        _.defaults(paramNode.params, o);  // 上書きしない
+        //_.defaults(paramNode.params, o);  // 上書きしない
+        // deep merge
+        paramNode.params = _.merge(paramNode.params, o);
     }
 
     if (/^\s*```tsv\s*$/.test(line)) {
