@@ -1167,7 +1167,12 @@ while (!srcLines.atEnd) {
         //_.assign(paramNode.params, o);  // 上書きする
         //_.defaults(paramNode.params, o);  // 上書きしない
         // deep merge
-        paramNode.params = _.merge(paramNode.params, o);
+        // 同名の配列が宣言された場合は、後から宣言された方で丸ごと上書きされる
+        paramNode.params = _.merge(paramNode.params, o, function(a, b) {
+            if (_.isArray(a) && _.isArray(b)) {
+                return b;
+            }
+        });
     }
 
     if (/^\s*```tsv\s*$/.test(line)) {
