@@ -2597,7 +2597,10 @@ CL.deletePropertyForAllNodes(root, "marker");
             }
 
             forAllNodes_Recurse(subTree, null, -1, function(node, parent, index) {
-                // あるnodeに1個でも false 的なものが渡されたら、それ以下のnode削除
+                // {{}} は {{$value}} を指定したものとみなす
+                node.text = node.text.replace(/\{\{\s*\}\}/g, "{{$value}}");
+
+               // あるnodeに1個でも false 的なものが渡されたら、それ以下のnode削除
                 var toDelete = false;
                 function replacer(m, k) {
                     k = k.trim();
