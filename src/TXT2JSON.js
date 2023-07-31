@@ -2300,6 +2300,50 @@ CL.deletePropertyForAllNodes(root, "marker");
         //printJSON(node.defaultParameters);
     });
 
+    // データを定義できるように
+    forAllNodes_Recurse(root, null, -1, function(node, parent, index) { }, function(node, parent, index) {
+        if (parent === null) {
+            return;
+        }
+        if (node.kind !== kindUL) {
+            return;
+        }
+
+        var match = node.text.trim().match(/^&([A-Za-z_]\w*):$/);
+        if (match === null) {
+            return;
+        }
+
+        var paramName = match[1];
+
+        if (!_.isUndefined(parent.params)) {
+            // 重複エラー
+            if (paramName in parent.params) {
+                var errorMessage = "データ名'"+ paramName +"'が重複しています。";
+                aliasError(errorMessage, node);
+            }
+        }
+        else {
+            parent.params = {};
+        }
+
+        var param = [];
+        // XXX: 1階層の単純な構成の想定。エラーチェックとかは一切しない
+        _.forEach(node.children, function(child) {
+            var o = {
+                $value: child.text,
+                $id: child.id
+            };
+            param.push(o);
+        });
+        //printJSON(param);
+
+        parent.params[paramName] = param;
+
+        // 親の children の自分自身を null に
+        parent.children[index] = null;
+    });
+
     // children の null の要素を削除して shrink
     function shrinkChildrenArray(node, parent, index) {
         forAllNodes_Recurse(node, parent, index,
