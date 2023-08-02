@@ -2640,9 +2640,18 @@ CL.deletePropertyForAllNodes(root, "marker");
                 eval(s);
             }
 
+            // 省略時はこれを使う
+            // 引数1個の場合を想定した仕様だけど、複数あってもエラーにはしないでおく
+            var firstParam = _.find(_.keys(parameters), function(s) {
+                return s.substr(0, 1) != "$";
+            });
+            if (_.isUndefined(firstParam)) {
+                firstParam = "$value";
+            }
             forAllNodes_Recurse(subTree, null, -1, function(node, parent, index) {
-                // {{}} は {{$value}} を指定したものとみなす
-                node.text = node.text.replace(/\{\{\s*\}\}/g, "{{$value}}");
+                // {{}} のように省略した場合は、引数（無名の場合は $value）を指定したものとみなす
+                // 引数1個の想定の仕様。引数が複数の場合は何が参照されるかは保証はない
+                node.text = node.text.replace(/\{\{\s*\}\}/g, "{{" + firstParam + "}}");
 
                 // あるnodeに1個でも false 的なものが渡されたら、それ以下のnode削除
                 var toDelete = false;
