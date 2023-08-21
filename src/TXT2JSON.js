@@ -2541,8 +2541,7 @@ CL.deletePropertyForAllNodes(root, "marker");
     // node に sub tree の clone を追加する
     // 展開前の状態で追加
     function addSubTree(targetNode, targetIndex, subTreeName, parameters) {
-        //printJSON(parameters);
-        if (_.isArray(parameters)) {
+        function rollArray(targetNode, targetIndex, subTreeName, parameters) {
             var clonedTargetNodes = [];
             _.forEach(parameters, function(element, index) {
                 var node = cloneSubTree(targetNode);
@@ -2577,6 +2576,11 @@ CL.deletePropertyForAllNodes(root, "marker");
 
             // ここではノードの追加のみ
             // 処理自体はループの後ろでされる想定
+        }
+
+        //printJSON(parameters);
+        if (_.isArray(parameters)) {
+            rollArray(targetNode, targetIndex, subTreeName, parameters);
             return;
         }
 
@@ -2599,6 +2603,8 @@ CL.deletePropertyForAllNodes(root, "marker");
         //    }
         //});
 
+        // 配列展開時に追加したパラメータ
+        // $index, $value
         if (!_.isUndefined(targetNode.tempParams)) {
             // primitive array のために必要な対応
             if (!_.isObject(parameters)) {
@@ -2608,7 +2614,8 @@ CL.deletePropertyForAllNodes(root, "marker");
         }
 
         // 変数展開
-        if (!_.isEmpty(parameters)) {
+        //if (!_.isEmpty(parameters)) {
+        {
             //printJSON(parameters);
 
             // この後の eval 内でプロパティに直接アクセスできるように
@@ -2654,49 +2661,47 @@ CL.deletePropertyForAllNodes(root, "marker");
                 node.text = node.text.replace(/\{\{\s*\}\}/g, "{{" + firstParam + "}}");
 
                 // あるnodeに1個でも false 的なものが渡されたら、それ以下のnode削除
-                var toDelete = false;
-                function replacer(m, k) {
-                    k = k.trim();
-                    var parameter;
-                    //var match = k.trim().match(/^eval\((.+)\)$/);
-                    if (/^[\w\$\.\[\]]+$/.test(k)) {
-                        // 変数そのままと . と [] でのアクセスだけ別処理
-                        // 少しでも処理が軽くなることを期待。意味なさそうだけど一応
-                        parameter = _.get(parameters, k, null);
-                    }
-                    else {
-                        parameter = eval("(" + k + ")");
-                    }
+                function replaceVariable(s) {
+                    var toDelete = false;
+                    function replacer(m, k) {
+                        if (toDelete) {
+                            return "";
+                        }
+                        //k = k.trim();
+                        var parameter;
+                        //var match = k.trim().match(/^eval\((.+)\)$/);
+                        if (/^[\w\$\.\[\]]+$/.test(k)) {
+                            // 変数そのままと . と [] でのアクセスだけ別処理
+                            // 少しでも処理が軽くなることを期待。意味なさそうだけど一応
+                            parameter = _.get(parameters, k, null);
+                        }
+                        else {
+                            parameter = eval("(" + k + ")");
+                        }
 
-                    // 明示的に省略を指定させたいので、未定義は対象外としておくことも考えたが、使い勝手的に省略で削除できる方が便利なので、そうする
-                    if (parameter === false || _.isUndefined(parameter) ||  _.isNull(parameter)) {
-                        toDelete = true;
-                        return "";
+                        // 明示的に省略を指定させたいので、未定義は対象外としておくことも考えたが、使い勝手的に省略で削除できる方が便利なので、そうする
+                        if (parameter === false || _.isUndefined(parameter) ||  _.isNull(parameter)) {
+                            toDelete = true;
+                            return "";
+                        }
+                        if (parameter === true) {
+                            return "";
+                        }
+                        return parameter;
                     }
-                    if (parameter === true) {
-                        return "";
-                    }
-                    return parameter;
+                    var replaced = s.replace( /\{\{\s*([^\}]+)\s*\}\}/g, replacer);
+                    return toDelete ? void(0) : replaced;
                 }
-                toDelete = false;
-                node.text = node.text.replace( /\{\{([^\}]+)\}\}/g, replacer);
-                if (toDelete) {
+                node.text = replaceVariable(node.text);
+                if (_.isUndefined(node.text)) {
                     node.parent.children[index] = null;
                     return;
                 }
                 if (node.comment) {
-                    toDelete = false;
-                    node.comment = node.comment.replace( /\{\{([^\}]+)\}\}/g, replacer);
-                    if (toDelete) {
-                        delete node.comment;
-                    }
+                    node.comment = replaceVariable(node.comment);
                 }
                 if (node.imageFilePath) {
-                    toDelete = false;
-                    node.imageFilePath = node.imageFilePath.replace( /\{\{([^\}]+)\}\}/g, replacer);
-                    if (toDelete) {
-                        delete node.imageFilePath;
-                    }
+                    node.imageFilePath = replaceVariable(node.imageFilePath);
                 }
             });
             shrinkChildrenArray(subTree, null, -1);
