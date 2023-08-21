@@ -2662,6 +2662,9 @@ CL.deletePropertyForAllNodes(root, "marker");
 
                 // あるnodeに1個でも false 的なものが渡されたら、それ以下のnode削除
                 function replaceVariable(s) {
+                    if (!s) {
+                        return void(0);
+                    }
                     var toDelete = false;
                     function replacer(m, k) {
                         if (toDelete) {
@@ -2697,12 +2700,8 @@ CL.deletePropertyForAllNodes(root, "marker");
                     node.parent.children[index] = null;
                     return;
                 }
-                if (node.comment) {
-                    node.comment = replaceVariable(node.comment);
-                }
-                if (node.imageFilePath) {
-                    node.imageFilePath = replaceVariable(node.imageFilePath);
-                }
+                node.comment = replaceVariable(node.comment);
+                node.imageFilePath = replaceVariable(node.imageFilePath);
             });
             shrinkChildrenArray(subTree, null, -1);
         }
