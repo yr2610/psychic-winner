@@ -2060,11 +2060,11 @@ CL.deletePropertyForAllNodes(root, "marker");
 
         var referableParams = {};
         if (!_.isUndefined(currentParameters)) {
-            referableParams = _.defaults(referableParams, currentParameters);
+            _.defaults(referableParams, currentParameters);
         }
         for (var parent = node.parent; !_.isUndefined(parent); parent = parent.parent) {
             if (!_.isUndefined(parent.params)) {
-                referableParams = _.defaults(referableParams, parent.params);
+                _.defaults(referableParams, parent.params);
             }
         }
 
@@ -2136,10 +2136,10 @@ CL.deletePropertyForAllNodes(root, "marker");
                 if (_.isArray(elem)) {
                     if (i < elem.length) {
                         if (_.isObject(elem[i])) {
-                            o = _.defaults(o, elem[i]);
+                            _.defaults(o, elem[i]);
                         }
                         else {
-                            o = _.defaults(o, {$value: elem[i]});
+                            _.defaults(o, {$value: elem[i]});
                         }
                     }
                 }
@@ -2150,7 +2150,7 @@ CL.deletePropertyForAllNodes(root, "marker");
                     o = elem(o);
                 }
                 else {
-                    o = _.defaults(o, elem);
+                    _.defaults(o, elem);
                 }
             });
             mergedArray.push(o);
@@ -2168,11 +2168,11 @@ CL.deletePropertyForAllNodes(root, "marker");
 //
 //        var referableParams = {};
 //        if (!_.isUndefined(currentParameters)) {
-//            referableParams = _.defaults(referableParams, currentParameters);
+//            _.defaults(referableParams, currentParameters);
 //        }
 //        for (var parent = node.parent; !_.isUndefined(parent); parent = parent.parent) {
 //            if (!_.isUndefined(parent.params)) {
-//                referableParams = _.defaults(referableParams, parent.params);
+//                _.defaults(referableParams, parent.params);
 //            }
 //        }
 //        //printJSON(referableParams);
@@ -2610,7 +2610,7 @@ CL.deletePropertyForAllNodes(root, "marker");
             if (!_.isObject(parameters)) {
                 parameters = {};
             }
-            parameters = _.defaults(parameters, targetNode.tempParams);
+            _.defaults(parameters, targetNode.tempParams);
         }
 
         // 変数展開
@@ -2760,7 +2760,7 @@ CL.deletePropertyForAllNodes(root, "marker");
             //                
             //                var inputParameters = _.assign({}, parsedParameters);
             //                // FIXME: 一旦全部見えるようにしておく。渡されたものだけ参照可能になるようにするべき
-            //                inputParameters = _.defaults(inputParameters, parameters);
+            //                _.defaults(inputParameters, parameters);
             //                var outputParameters = f(inputParameters);
             //                // 触らなかったのはそのまま使えるように
             //                parsedParameters = _.defaults(outputParameters, parsedParameters);
