@@ -2553,10 +2553,7 @@ CL.deletePropertyForAllNodes(root, "marker");
                 var elementId = ("$id" in element) ? element.$id : "i" + index;
                 node.id = targetNode.id + "_" + elementId;
 
-                node.tempParams = {
-                    $index: index,
-                    $value: element.$value
-                };
+                element.$index = index;
 
                 var paramJSON = JSON.stringify(element);
                 //var match = node.text.match(/^\*[A-Za-z_]\w*\((.*)\)$/);
@@ -2564,6 +2561,10 @@ CL.deletePropertyForAllNodes(root, "marker");
 
                 //node.text = "*" + subTreeName + "(" + paramName + "[" + index + "])" + match[2];
                 node.text = "*" + subTreeName + "(" + paramJSON + ")";
+                //var btnr = shell.Popup(node.text, 0, "node.text", ICON_EXCLA|BTN_OK_CANCL);
+                //if (btnr == BTNR_CANCL) {
+                //    WScript.Quit(0);
+                //}
                 clonedTargetNodes.push(node);
             });
 
@@ -2602,16 +2603,6 @@ CL.deletePropertyForAllNodes(root, "marker");
         //        parameters[key] = value;
         //    }
         //});
-
-        // 配列展開時に追加したパラメータ
-        // $index, $value
-        if (!_.isUndefined(targetNode.tempParams)) {
-            // primitive array のために必要な対応
-            if (!_.isObject(parameters)) {
-                parameters = {};
-            }
-            _.defaults(parameters, targetNode.tempParams);
-        }
 
         // 変数展開
         //if (!_.isEmpty(parameters)) {
@@ -3212,7 +3203,6 @@ CL.deletePropertyForAllNodes(root, "parent");
 CL.deletePropertyForAllNodes(root, "subTrees");
 CL.deletePropertyForAllNodes(root, "isValidSubTree");
 CL.deletePropertyForAllNodes(root, "params");
-CL.deletePropertyForAllNodes(root, "tempParams");
 
 forAllNodes_Recurse(root, null, -1, function(node, parent, index) {
     var headers = node.tableHeadersNonInputArea;
