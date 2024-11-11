@@ -1116,11 +1116,21 @@ while (!srcLines.atEnd) {
         //printJSON(o);
 
         // 関数定義な文字列は関数にする
-        _.forEach(o, function (v, k) {
-            if (_.isString(v) && v.match(/^function/)) {
-                o[k] = Function.call(this, 'return ' + v)();
-            }
-        });
+        function convertFunctions(o) {
+            _.forEach(o, function (v, k) {
+                if (_.isString(v) && v.match(/^function/)) {
+                    o[k] = Function.call(this, 'return ' + v)();
+                } else if (_.isObject(v) && !_.isArray(v)) {
+                    convertFunctions(v); // 再帰的に処理
+                }
+            });
+        }
+        convertFunctions(o);
+        //_.forEach(o, function (v, k) {
+        //    if (_.isString(v) && v.match(/^function/)) {
+        //        o[k] = Function.call(this, 'return ' + v)();
+        //    }
+        //});
 
 //        // プリミティブな配列を { $value: value } な配列にする
 //        function primitiveArrayToObjectArray(value, key, collection) {
