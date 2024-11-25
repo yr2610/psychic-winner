@@ -1776,6 +1776,70 @@ while (!srcLines.atEnd) {
 
 }
 
+// 「byte配列」から「16進数文字列」
+function bytes2hex(bytes) {
+    var hex = null;
+    // 「DOMDocument」生成
+    var doc = new ActiveXObject("Msxml2.DOMDocument");
+    // 「DomNode」生成（hex）
+    var element = doc.createElement("hex");
+    // 「dataType」に「bin.hex」を設定
+    element.dataType = "bin.hex";
+    // 「nodeTypedValue」に「byte配列」を設定
+    element.nodeTypedValue = bytes;
+    // 「text」を取得
+    hex = element.text;
+    // 後処理
+    element = null;
+    doc = null;
+    return hex;
+}
+
+function getHash(crypto, input) {
+    var encoding = new ActiveXObject("System.Text.UTF8Encoding");
+    var bytes = encoding.GetBytes_4(input);
+    var hash = crypto.ComputeHash_2(bytes);
+    return bytes2hex(hash);
+}
+function getMD5Hash(input) {
+    var crypto = new ActiveXObject("System.Security.Cryptography.MD5CryptoServiceProvider");
+    return getHash(crypto, input);
+}
+function getSHA1Hash(input) {
+    var crypto = new ActiveXObject("System.Security.Cryptography.SHA1CryptoServiceProvider");
+    return getHash(crypto, input);
+}
+
+// preprocess 後、 id 付与後のソーステキストをシートごとにhashで持っておく
+(function() {
+    var children = root.children;
+    var src = srcLines.__a;
+    var result = {};
+    for (var i = 0; i < children.length; i++) {
+        var start = src.indexOf(children[i].lineObj);
+        var end = (i + 1 < children.length) ? src.indexOf(children[i + 1].lineObj) : src.length;
+        var lines = [];
+        for (var j = start; j < end; j++) {
+            lines.push(src[j].line);
+        }
+        result[children[i].id] = lines.join("\n");
+    }
+
+    //var s = "";
+    _.forEach(root.children, function(v) {
+        //s += v.text + " ***\n";
+        var srcSheetText = result[v.id];
+
+        v.srcId = getMD5Hash(srcSheetText);
+        //v.srcId = getSHA1Hash(srcSheetText);
+    
+        //s += v.srcId + "\n";
+    });
+    //var outFilename = fso.GetBaseName(filePath) + "-src.txt";
+    //var outfilePath = fso.BuildPath(fso.GetParentFolderName(filePath), outFilename);
+    //CL.writeTextFileUTF8(s, outfilePath);
+})();
+
 function getNumLeaves(node)
 {
     if (node.children.length == 0)
@@ -1879,6 +1943,7 @@ _.forEach(noIdNodes, function(infos) {
         var newSrcText = info.newSrcText.replace(/\{uid\}/, uid);
 
         AddSrcTextToRewrite(info, newSrcText);
+        node.lineObj.line = newSrcText;
     });
 });
 
