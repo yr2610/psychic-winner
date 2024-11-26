@@ -151,6 +151,9 @@ if (fso.GetExtensionName(filePath) != "txt") {
     MyError(".txt ファイルをドラッグ＆ドロップしてください。");
 }
 
+var outFilename = fso.GetBaseName(filePath) + ".json";
+var outfilePath = fso.BuildPath(fso.GetParentFolderName(filePath), outFilename);
+
 // Performance を取得
 var htmlfile = WSH.CreateObject("htmlfile");
 htmlfile.write('<meta http-equiv="x-ua-compatible" content="IE=Edge"/>');
@@ -579,6 +582,7 @@ function parseHeading(lineObj) {
         tableHeadersNonInputArea: [],
         url: url,
         variables: {},
+        srcHash: null,  // 場所確保
         children: [],
 
         // 以下はJSON出力前に削除する
@@ -1776,6 +1780,18 @@ while (!srcLines.atEnd) {
 
 }
 
+var lastParsedRoot;
+
+(function() {
+    // 前回出力したJSONファイルがあれば読む
+    if (!fso.FileExists(outfilePath)) {
+        return;
+    }
+
+    var s = CL.readTextFileUTF8(outfilePath);
+    lastParsedRoot = JSON.parse(s);
+})();
+
 // 「byte配列」から「16進数文字列」
 function bytes2hex(bytes) {
     var hex = null;
@@ -1811,6 +1827,8 @@ function getSHA1Hash(input) {
 }
 
 // preprocess 後、 id 付与後のソーステキストをシートごとにhashで持っておく
+var parsedSheetNodeInfos = [];
+var srcTexts;   // XXX: root.id 用に保存しておく…
 (function() {
     var children = root.children;
     var src = srcLines.__a;
@@ -1824,16 +1842,48 @@ function getSHA1Hash(input) {
         }
         result[children[i].id] = lines.join("\n");
     }
+    srcText = result;
 
     //var s = "";
-    _.forEach(root.children, function(v) {
+    _.forEach(root.children, function(v, index) {
         //s += v.text + " ***\n";
         var srcSheetText = result[v.id];
+        //var srcHash = getSHA1Hash(srcSheetText);
+        var srcHash = getMD5Hash(srcSheetText);
 
-        v.srcId = getMD5Hash(srcSheetText);
-        //v.srcId = getSHA1Hash(srcSheetText);
+        v.srcHash = srcHash;
+
+        function getParsedSheetNode(sheetNode) {
+            if (!lastParsedRoot) {
+                return;
+            }
+            var parsedSheetNode = _.find(lastParsedRoot.children, { id: sheetNode.id });
+            if (!parsedSheetNode) {
+                return;
+            }
+            if (parsedSheetNode.srcHash && parsedSheetNode.srcHash == sheetNode.srcHash) {
+                return parsedSheetNode;
+            }
+        }
+
+        var parsedSheetNode = getParsedSheetNode(v);
+
+        // srcHash が同じ sheetNode があれば、そのまま再利用
+        if (parsedSheetNode) {
+            var info = {
+                index: index,
+                node: parsedSheetNode
+            };
+            parsedSheetNodeInfos.push(info);
+            root.children[index] = null;
+        }
     
-        //s += v.srcId + "\n";
+        //s += v.srcHash + "\n";
+    });
+    // 一旦削除する
+    // 「parsedSheet に置き換えする node は処理しない」というのをすべての処理に入れるというのは修正コストが高すぎるので
+    root.children = root.children.filter(function(node) {
+        return node != null;
     });
     //var outFilename = fso.GetBaseName(filePath) + "-src.txt";
     //var outfilePath = fso.BuildPath(fso.GetParentFolderName(filePath), outFilename);
@@ -3289,6 +3339,11 @@ forAllNodes_Recurse(root, null, -1, function(node, parent, index) {
     }
 });
 
+// srcHash が同じだった sheetNode を元の位置に挿入
+_.forEach(parsedSheetNodeInfos, function(info) {
+    root.children.splice(info.index, 0, info.node);
+});
+
 //function binToHex(binStr) {
 //    var xmldom = new ActiveXObject("Microsoft.XMLDOM");
 //    var binObj= xmldom.createElement("binObj");
@@ -3463,12 +3518,20 @@ Error(s);
 //}
 
 // TODO: root.id 廃止。 commit, update とかで使ってるので修正範囲は広い
+// TODO: commit, update とかは一旦すべて使わないことになったので、いろいろ気にせずやめても良い。無駄に時間食いすぎる
+// XXX: とりあえず SHA256 はとんでもなく時間かかるので MD5 に。JSON.stringfy がかかるのでソーステキストに
 (function() {
     // root.children を基に hash を求める
-    var k = JSON.stringify(root.children);
-    var shaObj = new jsSHA("SHA-256", "TEXT", { encoding: "UTF8" });
-    shaObj.update(k);
-    root.id = shaObj.getHash("HEX");
+    //var k = JSON.stringify(root.children);
+    var k = _.values(srcTexts).join("\n");
+    
+    //var startTime = performance.now();
+//    var shaObj = new jsSHA("SHA-256", "TEXT", { encoding: "UTF8" });
+//    shaObj.update(k);
+//    root.id = shaObj.getHash("HEX");
+    root.id = getMD5Hash(k);
+    //var endTime = performance.now();
+    //alert(endTime - startTime);
 })();
 
 
@@ -3508,13 +3571,48 @@ sJson = (function () {
 })();
 */
 
-var outFilename = fso.GetBaseName(filePath) + ".json";
-var outfilePath = fso.BuildPath(fso.GetParentFolderName(filePath), outFilename);
-
 CL.writeTextFileUTF8(sJson, outfilePath);
 
 if (!runInCScript) {
-    WScript.Echo("JSONファイル(" + outFilename + ")を出力しました");
+    var message = "JSONファイル(" + outFilename + ")を出力しました。";
+
+    // 更新か新規かでメッセージ変える
+    (function () {
+        if (parsedSheetNodeInfos.length == 0) {
+            return;
+        }
+
+        // indexプロパティをオブジェクトに変換
+        var indicesToExclude = {};
+        for (var i = 0; i < parsedSheetNodeInfos.length; i++) {
+            indicesToExclude[parsedSheetNodeInfos[i].index] = true;
+        }
+    
+        // 指定されたインデックスを除外して抽出
+        var filteredArray = root.children.filter(function(value, index) {
+            return !indicesToExclude[index];
+        });
+
+        if (filteredArray.length == 0) {
+            message += "\n（更新されたシートはありません）";
+            return;
+        }
+
+        message += "\n\n更新されたシート:\n";
+        
+        // 抽出した要素のtextプロパティに先頭に「*」をつけて改行で連結
+        var formattedString = filteredArray.map(function(obj) {
+            return '* ' + obj.text;
+        }).join('\n');
+
+        message += formattedString;
+
+        _.forEach(parsedSheetNodeInfos, function(info) {
+            root.children.splice(info.index, 0, info.node);
+        });
+    })();
+
+    WScript.Echo(message);
 }
 
 var updatedFiles = "";
