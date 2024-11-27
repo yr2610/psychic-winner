@@ -1964,10 +1964,9 @@ var srcTexts;   // XXX: root.id 用に保存しておく…
 
     _.forEach(root.children, function(v, index) {
         var srcSheetText = result[v.id];
-        //var srcHash = getSHA1Hash(srcSheetText);
-        var srcHash = getMD5Hash(srcSheetText);
 
-        v.srcHash = srcHash;
+        //v.srcHash = getSHA1Hash(srcSheetText);
+        v.srcHash = getMD5Hash(srcSheetText);
 
         function getParsedSheetNode(sheetNode) {
             if (!lastParsedRoot) {
