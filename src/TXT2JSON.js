@@ -1780,116 +1780,6 @@ while (!srcLines.atEnd) {
 
 }
 
-var lastParsedRoot;
-
-(function() {
-    // 前回出力したJSONファイルがあれば読む
-    if (!fso.FileExists(outfilePath)) {
-        return;
-    }
-
-    var s = CL.readTextFileUTF8(outfilePath);
-    lastParsedRoot = JSON.parse(s);
-})();
-
-// 「byte配列」から「16進数文字列」
-function bytes2hex(bytes) {
-    var hex = null;
-    // 「DOMDocument」生成
-    var doc = new ActiveXObject("Msxml2.DOMDocument");
-    // 「DomNode」生成（hex）
-    var element = doc.createElement("hex");
-    // 「dataType」に「bin.hex」を設定
-    element.dataType = "bin.hex";
-    // 「nodeTypedValue」に「byte配列」を設定
-    element.nodeTypedValue = bytes;
-    // 「text」を取得
-    hex = element.text;
-    // 後処理
-    element = null;
-    doc = null;
-    return hex;
-}
-
-function getHash(crypto, input) {
-    var encoding = new ActiveXObject("System.Text.UTF8Encoding");
-    var bytes = encoding.GetBytes_4(input);
-    var hash = crypto.ComputeHash_2(bytes);
-    return bytes2hex(hash);
-}
-function getMD5Hash(input) {
-    var crypto = new ActiveXObject("System.Security.Cryptography.MD5CryptoServiceProvider");
-    return getHash(crypto, input);
-}
-function getSHA1Hash(input) {
-    var crypto = new ActiveXObject("System.Security.Cryptography.SHA1CryptoServiceProvider");
-    return getHash(crypto, input);
-}
-
-// preprocess 後、 id 付与後のソーステキストをシートごとにhashで持っておく
-var parsedSheetNodeInfos = [];
-var srcTexts;   // XXX: root.id 用に保存しておく…
-(function() {
-    var children = root.children;
-    var src = srcLines.__a;
-    var result = {};
-    for (var i = 0; i < children.length; i++) {
-        var start = src.indexOf(children[i].lineObj);
-        var end = (i + 1 < children.length) ? src.indexOf(children[i + 1].lineObj) : src.length;
-        var lines = [];
-        for (var j = start; j < end; j++) {
-            lines.push(src[j].line);
-        }
-        result[children[i].id] = lines.join("\n");
-    }
-    srcText = result;
-
-    //var s = "";
-    _.forEach(root.children, function(v, index) {
-        //s += v.text + " ***\n";
-        var srcSheetText = result[v.id];
-        //var srcHash = getSHA1Hash(srcSheetText);
-        var srcHash = getMD5Hash(srcSheetText);
-
-        v.srcHash = srcHash;
-
-        function getParsedSheetNode(sheetNode) {
-            if (!lastParsedRoot) {
-                return;
-            }
-            var parsedSheetNode = _.find(lastParsedRoot.children, { id: sheetNode.id });
-            if (!parsedSheetNode) {
-                return;
-            }
-            if (parsedSheetNode.srcHash && parsedSheetNode.srcHash == sheetNode.srcHash) {
-                return parsedSheetNode;
-            }
-        }
-
-        var parsedSheetNode = getParsedSheetNode(v);
-
-        // srcHash が同じ sheetNode があれば、そのまま再利用
-        if (parsedSheetNode) {
-            var info = {
-                index: index,
-                node: parsedSheetNode
-            };
-            parsedSheetNodeInfos.push(info);
-            root.children[index] = null;
-        }
-    
-        //s += v.srcHash + "\n";
-    });
-    // 一旦削除する
-    // 「parsedSheet に置き換えする node は処理しない」というのをすべての処理に入れるというのは修正コストが高すぎるので
-    root.children = root.children.filter(function(node) {
-        return node != null;
-    });
-    //var outFilename = fso.GetBaseName(filePath) + "-src.txt";
-    //var outfilePath = fso.BuildPath(fso.GetParentFolderName(filePath), outFilename);
-    //CL.writeTextFileUTF8(s, outfilePath);
-})();
-
 function getNumLeaves(node)
 {
     if (node.children.length == 0)
@@ -1996,6 +1886,151 @@ _.forEach(noIdNodes, function(infos) {
         node.lineObj.line = newSrcText;
     });
 });
+
+var lastParsedRoot;
+
+(function() {
+    // 前回出力したJSONファイルがあれば読む
+    if (!fso.FileExists(outfilePath)) {
+        return;
+    }
+
+    var s = CL.readTextFileUTF8(outfilePath);
+    //var startTime = performance.now();
+    //lastParsedRoot = JSON.parse(s);
+    //var endTime = performance.now();
+    //alert(endTime - startTime);
+
+    // parse できるものを parse するならこちらの方が全然速い
+    function parseJSON(str) {
+        if (str === "") str = '""';
+        eval("var p=" + str + ";");
+        return p;
+    }
+    lastParsedRoot = parseJSON(s);
+})();
+
+// 「byte配列」から「16進数文字列」
+function bytes2hex(bytes) {
+    var hex = null;
+    // 「DOMDocument」生成
+    var doc = new ActiveXObject("Msxml2.DOMDocument");
+    // 「DomNode」生成（hex）
+    var element = doc.createElement("hex");
+    // 「dataType」に「bin.hex」を設定
+    element.dataType = "bin.hex";
+    // 「nodeTypedValue」に「byte配列」を設定
+    element.nodeTypedValue = bytes;
+    // 「text」を取得
+    hex = element.text;
+    // 後処理
+    element = null;
+    doc = null;
+    return hex;
+}
+
+function getHash(crypto, input) {
+    var encoding = new ActiveXObject("System.Text.UTF8Encoding");
+    var bytes = encoding.GetBytes_4(input);
+    var hash = crypto.ComputeHash_2(bytes);
+    return bytes2hex(hash);
+}
+function getMD5Hash(input) {
+    var crypto = new ActiveXObject("System.Security.Cryptography.MD5CryptoServiceProvider");
+    return getHash(crypto, input);
+}
+function getSHA1Hash(input) {
+    var crypto = new ActiveXObject("System.Security.Cryptography.SHA1CryptoServiceProvider");
+    return getHash(crypto, input);
+}
+
+// preprocess 後、 id 付与後のソーステキストをシートごとにhashで持っておく
+var parsedSheetNodeInfos = [];
+var srcTexts;   // XXX: root.id 用に保存しておく…
+(function() {
+    var children = root.children;
+    var src = srcLines.__a;
+    var result = {};
+    for (var i = 0; i < children.length; i++) {
+        var start = src.indexOf(children[i].lineObj);
+        var end = (i + 1 < children.length) ? src.indexOf(children[i + 1].lineObj) : src.length;
+        var lines = [];
+        for (var j = start; j < end; j++) {
+            lines.push(src[j].line);
+        }
+        result[children[i].id] = lines.join("\n");
+    }
+    srcText = result;
+
+    //var s = "";
+    _.forEach(root.children, function(v, index) {
+        //s += v.text + " ***\n";
+        var srcSheetText = result[v.id];
+        //var srcHash = getSHA1Hash(srcSheetText);
+        var srcHash = getMD5Hash(srcSheetText);
+
+        v.srcHash = srcHash;
+
+        function getParsedSheetNode(sheetNode) {
+            if (!lastParsedRoot) {
+                return;
+            }
+            var parsedSheetNode = _.find(lastParsedRoot.children, { id: sheetNode.id });
+            if (!parsedSheetNode) {
+                return;
+            }
+            if (parsedSheetNode.srcHash && parsedSheetNode.srcHash == sheetNode.srcHash) {
+                return parsedSheetNode;
+            }
+        }
+
+        var parsedSheetNode = getParsedSheetNode(v);
+
+        // srcHash が同じ sheetNode があれば、そのまま再利用
+        if (parsedSheetNode) {
+            var info = {
+                index: index,
+                node: parsedSheetNode
+            };
+            parsedSheetNodeInfos.push(info);
+            root.children[index] = null;
+        }
+    
+        //s += v.srcHash + "\n";
+    });
+    // 一旦削除する
+    // 「parsedSheet に置き換えする node は処理しない」というのをすべての処理に入れるというのは修正コストが高すぎるので
+    root.children = root.children.filter(function(node) {
+        return node != null;
+    });
+    //var outFilename = fso.GetBaseName(filePath) + "-src.txt";
+    //var outfilePath = fso.BuildPath(fso.GetParentFolderName(filePath), outFilename);
+    //CL.writeTextFileUTF8(s, outfilePath);
+
+    // 更新の場合はメッセージを表示
+    (function () {
+        if (parsedSheetNodeInfos.length == 0) {
+            // 完全新規っぽい場合は何も表示しない
+            return;
+        }
+
+        if (root.children.length == 0) {
+            alert("更新が必要なシートはありません");
+            return;
+        }
+
+        var message = "以下のシートを作成・更新します\n\n";
+        
+        // 抽出した要素のtextプロパティに先頭に「*」をつけて改行で連結
+        var formattedString = _.map(root.children, function(sheetNode) {
+            return '* ' + sheetNode.text;
+        }).join('\n');
+
+        message += formattedString;
+
+        alert(message);
+    })();
+})();
 
 // 配列を展開
 // '[' ']' の node で挟まれた node を配列とみなし、 leaf に ']' ノードの子treeをすべてコピー
@@ -3573,56 +3608,22 @@ sJson = (function () {
 
 CL.writeTextFileUTF8(sJson, outfilePath);
 
+(function () {
+    if (_.isEmpty(srcTextsToRewrite)) {
+        return;
+    }
+
+    var message = "以下のソースファイルを更新しました\n\n";
+    message += _.map(srcTextsToRewrite, function(value, key) {
+        return '* ' + key;
+    }).join('\n');
+
+    alert(message);
+})();
+
 if (!runInCScript) {
     var message = "JSONファイル(" + outFilename + ")を出力しました。";
-
-    // 更新か新規かでメッセージ変える
-    (function () {
-        if (parsedSheetNodeInfos.length == 0) {
-            return;
-        }
-
-        // indexプロパティをオブジェクトに変換
-        var indicesToExclude = {};
-        for (var i = 0; i < parsedSheetNodeInfos.length; i++) {
-            indicesToExclude[parsedSheetNodeInfos[i].index] = true;
-        }
-    
-        // 指定されたインデックスを除外して抽出
-        var filteredArray = root.children.filter(function(value, index) {
-            return !indicesToExclude[index];
-        });
-
-        if (filteredArray.length == 0) {
-            message += "\n（更新されたシートはありません）";
-            return;
-        }
-
-        message += "\n\n更新されたシート:\n";
-        
-        // 抽出した要素のtextプロパティに先頭に「*」をつけて改行で連結
-        var formattedString = filteredArray.map(function(obj) {
-            return '* ' + obj.text;
-        }).join('\n');
-
-        message += formattedString;
-
-        _.forEach(parsedSheetNodeInfos, function(info) {
-            root.children.splice(info.index, 0, info.node);
-        });
-    })();
-
-    WScript.Echo(message);
-}
-
-var updatedFiles = "";
-for (var filePath in srcTextsToRewrite) {
-    //updatedFiles += "\n" + fso.GetFileName(filePath);
-    updatedFiles += "\n" + filePath;
-}
-
-if (updatedFiles !== "") {
-    WScript.Echo("以下のソースファイルを更新しました" + updatedFiles);
+    alert(message);
 }
 
 WScript.Quit(0);
