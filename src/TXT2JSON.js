@@ -1960,11 +1960,9 @@ var srcTexts;   // XXX: root.id 用に保存しておく…
         }
         result[children[i].id] = lines.join("\n");
     }
-    srcText = result;
+    srcTexts = result;
 
-    //var s = "";
     _.forEach(root.children, function(v, index) {
-        //s += v.text + " ***\n";
         var srcSheetText = result[v.id];
         //var srcHash = getSHA1Hash(srcSheetText);
         var srcHash = getMD5Hash(srcSheetText);
@@ -1995,17 +1993,13 @@ var srcTexts;   // XXX: root.id 用に保存しておく…
             parsedSheetNodeInfos.push(info);
             root.children[index] = null;
         }
-    
-        //s += v.srcHash + "\n";
     });
+
     // 一旦削除する
     // 「parsedSheet に置き換えする node は処理しない」というのをすべての処理に入れるというのは修正コストが高すぎるので
     root.children = root.children.filter(function(node) {
         return node != null;
     });
-    //var outFilename = fso.GetBaseName(filePath) + "-src.txt";
-    //var outfilePath = fso.BuildPath(fso.GetParentFolderName(filePath), outFilename);
-    //CL.writeTextFileUTF8(s, outfilePath);
 
     // 更新の場合はメッセージを表示
     (function () {
