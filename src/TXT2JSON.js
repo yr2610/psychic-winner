@@ -2008,7 +2008,10 @@ var srcTexts;   // XXX: root.id 用に保存しておく…
         }
 
         if (root.children.length == 0) {
-            alert("更新が必要なシートはありません");
+            var btnr = shell.Popup("更新が必要なシートはありません\nJSONファイルを出力しますか？", 0, "確認", ICON_QUESTN|BTN_OK_CANCL);
+            if (btnr == BTNR_CANCL) {
+                WScript.Quit(0);
+            }
             return;
         }
 
@@ -2021,7 +2024,10 @@ var srcTexts;   // XXX: root.id 用に保存しておく…
 
         message += formattedString;
 
-        alert(message);
+        var btnr = shell.Popup(message, 0, "シート作成・更新", BTN_OK_CANCL);
+        if (btnr == BTNR_CANCL) {
+            WScript.Quit(0);
+        }
     })();
 })();
 
@@ -3601,22 +3607,33 @@ sJson = (function () {
 
 CL.writeTextFileUTF8(sJson, outfilePath);
 
-(function () {
+var strUpdatedSrcFiles = (function () {
     if (_.isEmpty(srcTextsToRewrite)) {
-        return;
+        return null;
     }
 
-    var message = "以下のソースファイルを更新しました\n\n";
+    var message = "以下のソースファイルに変更を加えました\n\n";
     message += _.map(srcTextsToRewrite, function(value, key) {
         return '* ' + key;
     }).join('\n');
 
-    alert(message);
+    return message;
 })();
 
 if (!runInCScript) {
-    var message = "JSONファイル(" + outFilename + ")を出力しました。";
+    var message = "JSONファイル(" + outFilename + ")を出力しました";
+
+    if (strUpdatedSrcFiles) {
+        message += "\n\n---\n\n" + strUpdatedSrcFiles;
+    }
+    
     alert(message);
+}
+else {
+    // 更新ファイルだけは必ずダイアログで表示する
+    if (strUpdatedSrcFiles) {
+        alert(strUpdatedSrcFiles);
+    }
 }
 
 WScript.Quit(0);
