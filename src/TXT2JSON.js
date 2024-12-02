@@ -2007,10 +2007,16 @@ var srcTexts;   // XXX: root.id 用に保存しておく…
             return;
         }
 
+        // キャンセル時には一般的によく使われるとされている値を返しておく
+        // 1: 一般的なエラー
+        // 2: コマンドライン引数のエラー
+        // 3: ファイルが見つからない
+        // 4: アクセス権限のエラー
+        // 5: ユーザーによるキャンセル        
         if (root.children.length == 0) {
             var btnr = shell.Popup("更新が必要なシートはありません\nJSONファイルを出力しますか？", 0, "確認", ICON_QUESTN|BTN_OK_CANCL);
             if (btnr == BTNR_CANCL) {
-                WScript.Quit(0);
+                WScript.Quit(5);
             }
             return;
         }
@@ -2026,7 +2032,7 @@ var srcTexts;   // XXX: root.id 用に保存しておく…
 
         var btnr = shell.Popup(message, 0, "シート作成・更新", BTN_OK_CANCL);
         if (btnr == BTNR_CANCL) {
-            WScript.Quit(0);
+            WScript.Quit(5);
         }
     })();
 })();
