@@ -1962,6 +1962,11 @@ var srcTexts;   // XXX: root.id 用に保存しておく…
     }
     srcTexts = result;
 
+    // root には存在せず lastParsedRoot には存在するノードを抽出
+    var removedNodesFromLastParse = _.filter(lastParsedRoot.children, function(node) {
+        return !_.some(root.children, function(rootNode) { return rootNode.id === node.id; });
+    });
+
     _.forEach(root.children, function(v, index) {
         var srcSheetText = result[v.id];
 
@@ -2002,9 +2007,20 @@ var srcTexts;   // XXX: root.id 用に保存しておく…
 
     // 更新の場合はメッセージを表示
     (function () {
-        if (parsedSheetNodeInfos.length == 0) {
+        if (lastParsedRoot == null) {
             // 完全新規っぽい場合は何も表示しない
             return;
+        }
+
+        var message = "";
+
+        if (removedNodesFromLastParse.length > 0) {
+            message += "次のシートが削除されました。\n\n";
+            var removedNodesString = _.map(removedNodesFromLastParse, function(sheetNode) {
+                return '* ' + sheetNode.text;
+            }).join('\n');
+            message += removedNodesString;
+            message += "\n\n";
         }
 
         // キャンセル時には一般的によく使われるとされている値を返しておく
@@ -2014,14 +2030,15 @@ var srcTexts;   // XXX: root.id 用に保存しておく…
         // 4: アクセス権限のエラー
         // 5: ユーザーによるキャンセル        
         if (root.children.length == 0) {
-            var btnr = shell.Popup("更新が必要なシートはありません\nJSONファイルを出力しますか？", 0, "確認", ICON_QUESTN|BTN_OK_CANCL);
+            message += "更新が必要なシートはありません\nJSONファイルを出力しますか？";
+            var btnr = shell.Popup(message, 0, "確認", ICON_QUESTN|BTN_OK_CANCL);
             if (btnr == BTNR_CANCL) {
                 WScript.Quit(5);
             }
             return;
         }
 
-        var message = "以下のシートを作成・更新します\n\n";
+        message += "以下のシートを作成・更新します\n\n";
         
         // 抽出した要素のtextプロパティに先頭に「*」をつけて改行で連結
         var formattedString = _.map(root.children, function(sheetNode) {
