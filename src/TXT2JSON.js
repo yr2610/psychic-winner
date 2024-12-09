@@ -1963,9 +1963,12 @@ var srcTexts;   // XXX: root.id 用に保存しておく…
     srcTexts = result;
 
     // root には存在せず lastParsedRoot には存在するノードを抽出
-    var removedNodesFromLastParse = _.filter(lastParsedRoot.children, function(node) {
-        return !_.some(root.children, function(rootNode) { return rootNode.id === node.id; });
-    });
+    var removedNodesFromLastParse;
+    if (lastParsedRoot) {
+        removedNodesFromLastParse = _.filter(lastParsedRoot.children, function(node) {
+            return !_.some(root.children, function(rootNode) { return rootNode.id === node.id; });
+        });
+    }
 
     _.forEach(root.children, function(v, index) {
         var srcSheetText = result[v.id];
@@ -2007,7 +2010,7 @@ var srcTexts;   // XXX: root.id 用に保存しておく…
 
     // 更新の場合はメッセージを表示
     (function () {
-        if (lastParsedRoot == null) {
+        if (!lastParsedRoot) {
             // 完全新規っぽい場合は何も表示しない
             return;
         }
