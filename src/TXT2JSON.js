@@ -3595,7 +3595,7 @@ Error(s);
 })();
 
 
-var sJson = JSON.stringify(root, undefined, 4);
+var sJson = JSON.stringify(root, undefined, 2);
 
 // 直列な感じにしてみるテスト
 // 全部シートを１つの配列にすると json のサイズは半分ぐらいになるけど jsondiffpatch が簡単にスタック食いつぶすっぽい
