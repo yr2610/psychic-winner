@@ -2217,6 +2217,36 @@ CL.deletePropertyForAllNodes(root, "marker");
 //    WScript.Echo(s);
 //}
 
+//// 使用例
+//var globalScope = { foo: 1 };
+//var localScope = Object.create(globalScope);
+//localScope.bar = 2;
+//
+//// 平坦化（継承元も含めて）
+//var flatScope = _.assign({}, localScope);
+//
+//var result = evaluateInScope("foo + bar", flatScope); // → 3
+function evaluateInScope(expr, scope) {
+  var keys = _.keys(scope);
+  var values = _.map(keys, function(k) { return scope[k]; });
+  var func = new Function(keys.join(","), "return " + expr + ";");
+  return func.apply(null, values);
+}
+
+// 一番上の階層の upper snake case なプロパティをシートから閲覧できるようにする
+var globalScope = (function(original) {
+    if (typeof original === "undefined") return {};
+
+    var keys = _.keys(original);
+    var filteredKeys = _.filter(keys, function(key) {
+        return /^[A-Z0-9_]+$/.test(key);
+    });
+    var filtered = _.pick(original, filteredKeys);
+
+    return filtered;
+})(conf);
+//printJSON(globalScope);
+
 // エイリアス埋め込み
 // まずはすべてのノードについて調べ、親に登録
 (function() {
