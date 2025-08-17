@@ -30,6 +30,22 @@ function loadGlobalConfig() {
 
 }
 
+function computeRootId() {
+
+    // root.children を基に hash を求める
+    //var k = JSON.stringify(root.children);
+    var k = _.values(srcTexts).join("\n");
+    
+    //var startTime = performance.now();
+//    var shaObj = new jsSHA("SHA-256", "TEXT", { encoding: "UTF8" });
+//    shaObj.update(k);
+//    root.id = shaObj.getHash("HEX");
+    root.id = getMD5Hash(k);
+    //var endTime = performance.now();
+    //alert(endTime - startTime);
+
+}
+
 // file の ReadLine(), AtEndOfStream 風の仕様で配列にアクセスするための機構を用意
 function ArrayReader(array) { this.__a = array; this.index = 0; this.atEnd = false; }
 ArrayReader.prototype.read = function(o) { if (this.atEnd) return null; if (this.index + 1 >= this.__a.length) this.atEnd = true; return this.__a[this.index++]; }
@@ -171,7 +187,6 @@ var shell, shellApplication, fso, stream;
 setupEnvironment();
 
 var filePath = parseArgs();
-
 
 if (fso.GetExtensionName(filePath) != "txt") {
     MyError(".txt ファイルをドラッグ＆ドロップしてください。");
@@ -3056,19 +3071,7 @@ Error(s);
 // TODO: root.id 廃止。 commit, update とかで使ってるので修正範囲は広い
 // TODO: commit, update とかは一旦すべて使わないことになったので、いろいろ気にせずやめても良い。無駄に時間食いすぎる
 // XXX: とりあえず SHA256 はとんでもなく時間かかるので MD5 に。JSON.stringfy がかかるのでソーステキストに
-(function() {
-    // root.children を基に hash を求める
-    //var k = JSON.stringify(root.children);
-    var k = _.values(srcTexts).join("\n");
-    
-    //var startTime = performance.now();
-//    var shaObj = new jsSHA("SHA-256", "TEXT", { encoding: "UTF8" });
-//    shaObj.update(k);
-//    root.id = shaObj.getHash("HEX");
-    root.id = getMD5Hash(k);
-    //var endTime = performance.now();
-    //alert(endTime - startTime);
-})();
+computeRootId();
 
 
 var sJson = JSON.stringify(root, undefined, 2);
