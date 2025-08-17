@@ -1,9 +1,25 @@
-﻿(function main() {
+﻿function alert(s) {
+    WScript.Echo(s);
+}
+
+function printJSON(json) {
+    alert(JSON.stringify(json, undefined, 4));
+}
+
+var shell = new ActiveXObject("WScript.Shell");
+var shellApplication = new ActiveXObject("Shell.Application");
+var fso = new ActiveXObject("Scripting.FileSystemObject");
+var stream = new ActiveXObject("ADODB.Stream");
+var filePath = (WScript && WScript.Arguments && WScript.Arguments.length > 0)
+  ? WScript.Arguments.Unnamed(0) : "";
+
+var conf = null;
+
 function setupEnvironment() {
-    shell = new ActiveXObject("WScript.Shell");
-    shellApplication = new ActiveXObject("Shell.Application");
-    fso = new ActiveXObject("Scripting.FileSystemObject");
-    stream = new ActiveXObject("ADODB.Stream");
+    if (!shell) shell = new ActiveXObject("WScript.Shell");
+    if (!shellApplication) shellApplication = new ActiveXObject("Shell.Application");
+    if (!fso) fso = new ActiveXObject("Scripting.FileSystemObject");
+    if (!stream) stream = new ActiveXObject("ADODB.Stream");
 }
 
 function parseArgs() {
@@ -58,14 +74,6 @@ var runInCScript = (function() {
 
     return (fso.getBaseName(WScript.FullName).toLowerCase() === "cscript");
 })();
-
-function alert(s) {
-    WScript.Echo(s);
-}
-
-function printJSON(json) {
-    alert(JSON.stringify(json, undefined, 4));
-}
 
 function $templateObject(object, data) {
     var json = JSON.stringify(object);
@@ -183,10 +191,9 @@ if (typeof(global) === 'undefined') {
     global = Function('return this')();
 }
 
-var shell, shellApplication, fso, stream;
 setupEnvironment();
 
-var filePath = parseArgs();
+filePath = parseArgs();
 
 if (fso.GetExtensionName(filePath) != "txt") {
     MyError(".txt ファイルをドラッグ＆ドロップしてください。");
@@ -228,7 +235,7 @@ var confFileName = "conf.yml";
         confFileName = baseName + "_" + confFileName;
     }
 })();
-var conf = readConfigFile(confFileName);
+conf = readConfigFile(confFileName);
 
 var entryFilePath = filePath;
 var entryProject = fso.GetParentFolderName(entryFilePath);
@@ -3142,5 +3149,3 @@ else {
 }
 
 WScript.Quit(0);
-
-})();
