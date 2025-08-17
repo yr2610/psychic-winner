@@ -1,4 +1,4 @@
-(function main() {
+﻿(function main() {
 function setupEnvironment() {
     shell = new ActiveXObject("WScript.Shell");
     shellApplication = new ActiveXObject("Shell.Application");
@@ -14,7 +14,23 @@ function parseArgs() {
     return WScript.Arguments.Unnamed(0);
 }
 
-﻿// file の ReadLine(), AtEndOfStream 風の仕様で配列にアクセスするための機構を用意
+function loadGlobalConfig() {
+
+    var confFilePath = "conf.yml";
+    confFilePath = fso.BuildPath(fso.GetParentFolderName(WScript.ScriptFullName), confFilePath);
+    if (!fso.FileExists(confFilePath)) {
+        return;
+    }
+    var data = CL.readYAMLFile(confFilePath);
+
+    // include文法のパス用
+    if (!_.isUndefined(data.includePath)) {
+        includePath = includePath.concat(data.includePath);
+    }
+
+}
+
+// file の ReadLine(), AtEndOfStream 風の仕様で配列にアクセスするための機構を用意
 function ArrayReader(array) { this.__a = array; this.index = 0; this.atEnd = false; }
 ArrayReader.prototype.read = function(o) { if (this.atEnd) return null; if (this.index + 1 >= this.__a.length) this.atEnd = true; return this.__a[this.index++]; }
 
@@ -156,6 +172,7 @@ setupEnvironment();
 
 var filePath = parseArgs();
 
+
 if (fso.GetExtensionName(filePath) != "txt") {
     MyError(".txt ファイルをドラッグ＆ドロップしてください。");
 }
@@ -186,19 +203,7 @@ includePath.push(fso.GetParentFolderName(filePath));
 // グローバルな設定
 // 現状 includePath のみ
 // FIXME: 廃止予定
-(function() {
-    var confFilePath = "conf.yml";
-    confFilePath = fso.BuildPath(fso.GetParentFolderName(WScript.ScriptFullName), confFilePath);
-    if (!fso.FileExists(confFilePath)) {
-        return;
-    }
-    var data = CL.readYAMLFile(confFilePath);
-
-    // include文法のパス用
-    if (!_.isUndefined(data.includePath)) {
-        includePath = includePath.concat(data.includePath);
-    }
-})();
+loadGlobalConfig();
 
 var confFileName = "conf.yml";
 (function() {
