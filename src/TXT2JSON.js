@@ -1,12 +1,12 @@
-(function main(){
-function setupEnvironment(){
+(function main() {
+function setupEnvironment() {
     shell = new ActiveXObject("WScript.Shell");
     shellApplication = new ActiveXObject("Shell.Application");
     fso = new ActiveXObject("Scripting.FileSystemObject");
     stream = new ActiveXObject("ADODB.Stream");
 }
 
-function parseArgs(){
+function parseArgs() {
     if (( WScript.Arguments.length != 1 ) ||
         ( WScript.Arguments.Unnamed(0) == "")) {
         MyError("チェックリストのソースファイル（.txt）をドラッグ＆ドロップしてください。");
@@ -186,7 +186,7 @@ includePath.push(fso.GetParentFolderName(filePath));
 // グローバルな設定
 // 現状 includePath のみ
 // FIXME: 廃止予定
-(function(){
+(function() {
     var confFilePath = "conf.yml";
     confFilePath = fso.BuildPath(fso.GetParentFolderName(WScript.ScriptFullName), confFilePath);
     if (!fso.FileExists(confFilePath)) {
@@ -201,7 +201,7 @@ includePath.push(fso.GetParentFolderName(filePath));
 })();
 
 var confFileName = "conf.yml";
-(function(){
+(function() {
     var baseName = fso.GetBaseName(filePath);
     baseName = baseName.replace(/_index$/, "");
     if (baseName != "index") {
@@ -250,7 +250,7 @@ var root = {
 stack.push(root);
 
 // conf から機能を持った変数を移行
-(function(){
+(function() {
     if (!_.isUndefined(conf.$templateValues)) {
         _.assign(root.variables, conf.$templateValues);
     }
@@ -519,7 +519,7 @@ function parseHeading(lineObj) {
 
             var uidListH1 = FindUidList(stack.peek());
             if (uid in uidListH1) {
-                (function(){
+                (function() {
                     var uidInfo0 = uidListH1[uid];
                     var errorMessage = "ID '#" + uid + "' が重複しています";
                     errorMessage += makeLineinfoString(uidInfo0.filePath, uidInfo0.lineNum);
@@ -682,7 +682,7 @@ function parseUnorderedList(lineObj) {
     if (uidMatch) {
         uid = uidMatch[1];
         text = uidMatch[2];
-        {(function(){
+        {(function() {
             var uidList = FindUidList(stack.peek());
             if (uid in uidList) {
                 var uidInfo0 = uidList[uid];
@@ -997,7 +997,7 @@ while (!srcLines.atEnd) {
     // 数字は unique ID として扱う
     var ol = line.match(/^\s*(\d+)\.\s+(.*)$/);
     if (ol) {
-        (function(){
+        (function() {
             var number = parseInt(ol[1], 10);
             var text = ol[2];
             var parent = stack.peek();
