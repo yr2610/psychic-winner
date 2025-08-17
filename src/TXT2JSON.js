@@ -1,3 +1,4 @@
+(function main(){
 ﻿// file の ReadLine(), AtEndOfStream 風の仕様で配列にアクセスするための機構を用意
 function ArrayReader(array) { this.__a = array; this.index = 0; this.atEnd = false; }
 ArrayReader.prototype.read = function(o) { if (this.atEnd) return null; if (this.index + 1 >= this.__a.length) this.atEnd = true; return this.__a[this.index++]; }
@@ -1189,6 +1190,9 @@ while (!srcLines.atEnd) {
         });
     }
 
+    
+
+
     // obsolete
     /*
     var image = line.match(/^(\s*)!\[\]\((.+)\)$/);
@@ -1613,6 +1617,8 @@ var srcTexts;   // XXX: root.id 用に保存しておく…
         }
     })();
 })();
+
+
 
 // group と depthInGroup を計算
 forAllNodes_Recurse(root, null, -1, function(node, parent, index) {
@@ -3120,3 +3126,5 @@ else {
 }
 
 WScript.Quit(0);
+
+})();
