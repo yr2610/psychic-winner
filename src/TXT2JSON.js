@@ -1715,27 +1715,31 @@ var globalScope = (function(original) {
 })(conf);
 //printJSON(globalScope);
 
-// エイリアス埋め込み
+// テンプレート埋め込み（旧: エイリアス埋め込み）
 // まずはすべてのノードについて調べ、親に登録
 (function() {
     var startTime = performance.now();
 
-    var AliasError = function(errorMessage, node) {
+    // ===== Errors =====
+    // 旧: AliasError
+    var TemplateError = function(errorMessage, node) {
         this.errorMessage = errorMessage;
         this.node = node;
     };
 
-    function aliasError(errorMessage, node) {
+    // 旧: aliasError
+    function templateError(errorMessage, node) {
         var lineObj = node.lineObj;
         if (_.isUndefined(lineObj)) {
             MyError(errorMessage);
-        }
-        else {
+        } else {
             MyError(errorMessage, lineObj.filePath, lineObj.lineNum);
         }
     }
 
-    function evalParameters(paramsStr, node, currentParameters) {
+    // ===== Parameter Evaluation =====
+    // 旧: evalParameters
+    function evalTemplateParameters(paramsStr, node, currentParameters) {
         paramsStr = paramsStr.trim();
         if (paramsStr == "") {
             return {};
@@ -1751,33 +1755,9 @@ var globalScope = (function(original) {
             }
         }
 
-        // XXX: これだと { foo: "bar" } を { foo: "bar" } としてしまうのでNG
-        //function replacer(m, k) {
-        //    return "referableParams." + k;
-        //}
-        //paramsStr = paramsStr.replace( /([_A-Za-z]\w*)/g, replacer);
-        //alert(paramsStr);
-
-        // XXX: 処理が重すぎる
-        // TODO: 計測するべき
-        //function parseParams(referableParams, paramsStr) {
-        //    var s = "";
-        //    _.forEach(referableParams, function(value, key) {
-        //        // XXX: key が添字な文字列、value が undefined な値が来ることがあるので対処。理由は調査できてない…
-        //        if (_.isUndefined(value)) {
-        //            return;
-        //        }
-        //        s += "var " + key + "=referableParams." + key + ";";
-        //    });
-        //    s += "var result = [" + paramsStr + "];";
-        //    eval(s);
-//
-        //    return result;
-        //}
+        // XXX: 処理が重すぎる（旧コメントそのまま）
         function parseParams(referableParams, paramsStr) {
             // _.keys(), _.values() は列挙順は保証されてないので一応自前で詰めておく
-            //var keys = _.keys(referableParams);
-            //var values = _.values(referableParams);
             var keys = [];
             var values = [];
             _.forEach(referableParams, function(value, key) {
@@ -1791,14 +1771,13 @@ var globalScope = (function(original) {
             keys.push("__paramsStr");
             values.push(paramsStr);
             var f = Function(keys.join(","), 'return eval("([" + __paramsStr + "])");');
-    
+
             return f.apply(null, values);
         }
+
         var paramsArray = parseParams(referableParams, paramsStr);
 
         // object を返すには丸括弧が必要らしい
-        //var paramsArray = eval("([" + paramsStr + "])");
-        //printJSON(paramsArray);
         if (paramsArray.length == 1) {
             return paramsArray[0];
         }
@@ -1820,8 +1799,7 @@ var globalScope = (function(original) {
                     if (i < elem.length) {
                         if (_.isObject(elem[i])) {
                             _.defaults(o, elem[i]);
-                        }
-                        else {
+                        } else {
                             _.defaults(o, {$value: elem[i]});
                         }
                     }
@@ -1831,8 +1809,7 @@ var globalScope = (function(original) {
                     // o はこの関数で作った object なので clone 不要
                     // 関数の中で直接書き換えてもOK
                     o = elem(o);
-                }
-                else {
+                } else {
                     _.defaults(o, elem);
                 }
             });
@@ -1840,65 +1817,14 @@ var globalScope = (function(original) {
         });
         // ほぼ意味ないけど、要素数1の場合はobjectを返す
         return (mergedArray.length == 1) ? mergedArray[0] : mergedArray;
-
-//        // 直接 object 渡しの場合は { } で囲む
-//        if (/^\{.+\}$/.test(paramsStr)) {
-//            // object を返すには丸括弧が必要らしい
-//            var params = eval("(" + paramsStr + ")");
-//            //params.$params = params;
-//            return params;
-//        }
-//
-//        var referableParams = {};
-//        if (!_.isUndefined(currentParameters)) {
-//            _.defaults(referableParams, currentParameters);
-//        }
-//        for (var parent = node.parent; !_.isUndefined(parent); parent = parent.parent) {
-//            if (!_.isUndefined(parent.params)) {
-//                _.defaults(referableParams, parent.params);
-//            }
-//        }
-//        //printJSON(referableParams);
-//
-//        // TODO: , で split して順に _.default() で集める
-//        // TODO: 1個目が配列の場合、2個目以降と扱いを分ける
-//        var params = _.get(referableParams, paramsStr);
-//        if (!_.isUndefined(params)) {
-//            //params.$params = params;
-//            return params;
-//        }
-//
-//        // TODO: 該当する名前のパラメータオブジェクトが見つからない場合は例外投げる
-//        return {};
     }
 
-    // subTree に対してそのまま cloneDeep を呼ぶと、 parent をさかのぼって tree 全体が clone されるので対処
-    function cloneSubTree(srcSubTree) {
-//        var rootParent = srcSubTree.parent;
-//        CL.deletePropertyForAllNodes(srcSubTree, "parent");
-//
-//        var dst = _.cloneDeep(srcSubTree);
-//
-//        //srcSubTree.parent = rootParent;
-//        //dst.parent = rootParent;
-//
-//        forAllNodes_Recurse(srcSubTree, rootParent, -1, function(node, parent, index) {
-//            if (node === null) {
-//                return true;
-//            }
-//            node.parent = parent;
-//        });
-//        forAllNodes_Recurse(dst, rootParent, -1, function(node, parent, index) {
-//            if (node === null) {
-//                return true;
-//            }
-//            node.parent = parent;
-//        });
-//
-//        return dst;
-
+    // ===== Tree Utilities =====
+    // 旧: cloneSubTree
+    // templateTree に対してそのまま cloneDeep を呼ぶと、 parent をさかのぼって tree 全体が clone されるので対処
+    function cloneTemplateTree(srcTemplateTree) {
         // 自前で tree をたどって全 node を shallow copy
-        var dstSubTree = _.assign({}, srcSubTree);
+        var dstTemplateTree = _.assign({}, srcTemplateTree);
 
         function _recurse(dstNode, srcNode) {
             dstNode.children = [];
@@ -1912,120 +1838,29 @@ var globalScope = (function(original) {
                 _recurse(dstChild, srcChild);
             });
         }
-
-        _recurse(dstSubTree, srcSubTree);
-
-        return dstSubTree;
-
-//        // root node を shallow copy
-//        //var dst = Object.assign(srcSubTree);
-//        var dst = {};
-//        _.assign(dst, srcSubTree);
-//
-//        dst.parent = null;
-//
-//        return _.cloneDeep(dst);
+        _recurse(dstTemplateTree, srcTemplateTree);
+        return dstTemplateTree;
     }
 
-    // データを定義できるように
-    forAllNodes_Recurse(root, null, -1, function(node, parent, index) { }, function(node, parent, index) {
-        if (parent === null) {
-            return;
-        }
-        if (node.kind !== kindUL) {
-            return;
-        }
-
-        var match = node.text.trim().match(/^&([A-Za-z_]\w*):$/);
-        if (match === null) {
-            return;
-        }
-
-        var paramName = match[1];
-
-        if (!_.isUndefined(parent.params)) {
-            // 重複エラー
-            if (paramName in parent.params) {
-                var errorMessage = "データ名'"+ paramName +"'が重複しています。";
-                aliasError(errorMessage, node);
+    function nodeToString(root) {
+        var depth = 0;
+        var s = "";
+        forAllNodes_Recurse(root, null, -1,
+            function(node, parent, index) {
+                if (node === null) {
+                    return true;
+                }
+                var indent = _.repeat("    ", depth);
+                s += index + " : ";
+                s += indent + "(" + node.group + " ," + node.depthInGroup + ")  " + node.text + "\n";
+                depth++;
+            },
+            function(node, parent, index) {
+                depth--;
             }
-        }
-        else {
-            parent.params = {};
-        }
-
-        var param = [];
-        // XXX: 1階層の単純な構成の想定。エラーチェックとかは一切しない
-        _.forEach(node.children, function(child) {
-            var o = {
-                $value: child.text,
-                $id: child.id
-            };
-            param.push(o);
-        });
-        //printJSON(param);
-
-        parent.params[paramName] = param;
-
-        // 親の children の自分自身を null に
-        parent.children[index] = null;
-    });
-
-    // すべての alias を tree から取り外し、所属 node にリストアップしておく
-    forAllNodes_Recurse(root, null, -1, function(node, parent, index) { }, function(node, parent, index) {
-        if (parent === null) {
-            return;
-        }
-        if (node.kind !== kindUL) {
-            return;
-        }
-
-        var match = node.text.trim().match(/^&([A-Za-z_]\w*)\(\)$/);
-        if (match === null) {
-            return;
-        }
-
-        var subTreeName = match[1];
-
-        if ("subTrees" in parent) {
-            // 重複エラー
-            if (subTreeName in parent.subTrees) {
-                var errorMessage = "エイリアス名'"+ subTreeName +"'が重複しています。";
-                aliasError(errorMessage, node);
-            }
-        }
-        else {
-            parent.subTrees = {};
-        }
-        parent.subTrees[subTreeName] = node;
-
-        // node の group 関係を subtree root からの offset 値に
-        // 木の中で宣言した場合でも大丈夫なように対応しておく
-        var subTreeGroup = node.group;
-        var subTreeDepthInGroup = node.depthInGroup;
-        forAllNodes_Recurse(node, null, -1, function(node, parent, index) {
-            if (node.group === subTreeGroup) {
-                // subTreeRoot と同じ group の node の depthInGroup は必ず 1 多いので引いておく
-                node.depthInGroup -= subTreeDepthInGroup + 1;
-            }
-            node.group -= subTreeGroup;
-        });
-
-        // 親の children の自分自身を null に
-        parent.children[index] = null;
-
-        // TODO: 宣言時に記述する defaultParameter 仕様は廃止の方向で
-        // TODO: 上に遡ってアクセスできたものを defaultParameter とする（下層優先）
-        // 現状 evalParameters() の仕様が defaultParameter 仕様に合っていない
-        //try {
-        //    node.defaultParameters = evalParameters(match[2], node);
-        //}
-        //catch(e) {
-        //    var errorMessage = "パラメータが不正です。";
-        //    aliasError(errorMessage, node);
-        //}
-        //printJSON(node.defaultParameters);
-    });
+        );
+        return s;
+    }
 
     // children の null の要素を削除して shrink
     function shrinkChildrenArray(node, parent, index) {
@@ -2042,12 +1877,12 @@ var globalScope = (function(original) {
                 }
             },
             function(node, parent, index) {
-                var validChildren = node.children.filter(function(element, index, array) {
+                var validChildren = node.children.filter(function(element) {
                     return (element !== null);
                 });
                 if (validChildren.length === 0) {
                     if (node.kind === kindH) {
-                        var errorMessage = "シート「"+ node.text +"」に有効な項目が存在しません\n※子階層がエイリアスのみとなっている可能性があります";
+                        var errorMessage = "シート「"+ node.text +"」に有効な項目が存在しません\n※子階層がテンプレートのみとなっている可能性があります（旧: エイリアス）";
                         var lineObj = node.lineObj;
                         MyError(errorMessage, lineObj.filePath, lineObj.lineNum);
                     }
@@ -2061,173 +1896,192 @@ var globalScope = (function(original) {
             }
         );
     }
-
-    function shrinkChildrenArrayforAllNodes() {
+    function shrinkChildrenArrayForAllNodes() {
         shrinkChildrenArray(root, null, -1);
     }
 
-    shrinkChildrenArrayforAllNodes();
-
-    // 名前からtreeをさかのぼって見つける
-    // なければ null を返す
-    function findSubTree_Recurse(subTreeName, node) {
-        if (_.isUndefined(node) || node === null) {
-            return null;
-        }
-        if ("subTrees" in node) {
-            if (subTreeName in node.subTrees) {
-                return node.subTrees[subTreeName];
+    // ===== Template Collection =====
+    // 旧: &NAME: データ定義（params）を親に集約
+    function collectTemplateParamsFromULNodes() {
+        forAllNodes_Recurse(root, null, -1, function(node, parent, index) { }, function(node, parent, index) {
+            if (parent === null) {
+                return;
             }
-        }
-        return findSubTree_Recurse(subTreeName, node.parent);
-    }
-
-    // すべての alias 内の alias 参照を事前に展開しておく
-//    forAllNodes_Recurse(root, null, -1, function(node, parent, index) {
-//        if (_.isUndefined(node.subTrees)) {
-//            return;
-//        }
-//
-//        _.forEach(node.subTrees, function(subTreeRoot, name) {
-//
-//            verifyReference(subTreeRoot);
-//
-//            forAllNodes_Recurse(subTreeRoot, null, -1, function(node, parent, index) {
-//                if (node === null) {
-//                    return true;
-//                }
-//                var match = node.text.trim().match(/^\*([A-Za-z_]\w*)\((.*)\)$/);
-//                if (match === null) {
-//                    return;
-//                }
-//                var subTreeName = match[1];
-//
-//                try {
-//                    var parameters = evalParameters(match[2], node);
-//                }
-//                catch(e) {
-//                    var errorMessage = "パラメータが不正です。";
-//                    aliasError(errorMessage, node);
-//                }
-//        
-//                addSubTree(node, index, subTreeName, parameters);
-//            });
-//
-//            shrinkChildrenArray(subTreeRoot, null, -1);
-//        });
-//    });
-
-    // 一旦 parent を削除
-    // subtree だけ deep clone したつもりが parent をさかのぼって tree 全体が丸ごと clone されてしまうので
-//    forAllNodes_Recurse(root, null, -1, function(node, parent, index) {
-//        if (_.isUndefined(node.subTrees)) {
-//            return;
-//        }
-//        _.forEach(node.subTrees, function(subTreeRoot, name) {
-//            //CL.deletePropertyForAllNodes(subTreeRoot, "parent");
-//            delete subTreeRoot.parent;
-//        });
-//    });
-
-
-    function nodeToString(root) {
-        var depth = 0;
-        var s = "";
-        forAllNodes_Recurse(root, null, -1,
-            function(node, parent, index) {
-                if (node === null) {
-                    return true;
-                }
-                var indent = _.repeat("    ", depth);
-                s += index + " : "
-                s += indent + "(" + node.group + " ," + node.depthInGroup + ")  " + node.text + "\n";
-                depth++;
-            },
-            function(node, parent, index) {
-                depth--;
-            }
-        );
-        return s;
-    }
-
-    // 問題がないか調べる
-    // 一度確認した subtree は isValid フラグ立てておく。json 出力前に delete
-    function verifyReference(subTreeRoot) {
-
-        function _recurse(subTree, callStack) {
-            if (subTree.isValidSubTree) {
+            if (node.kind !== kindUL) {
                 return;
             }
 
-            if (subTree.children.length === 0) {
-                var errorMessage = "エイリアスには1個以上の子ノードが必要です。";
-                throw new AliasError(errorMessage, subTree);
+            var match = node.text.trim().match(/^&([A-Za-z_]\w*):$/);
+            if (match === null) {
+                return;
             }
 
-            for (var i = 0; i < subTree.children.length; i++) {
-                if (subTree.children[i].group !== subTree.group) {
-                    var errorMessage = "エイリアスの第2階層はグループ切り替えはできません。\nルート（エイリアス名の行）と同じマークにしてください";
-                    throw new AliasError(errorMessage, subTree);
+            var paramName = match[1];
+
+            if (!_.isUndefined(parent.params)) {
+                // 重複エラー
+                if (paramName in parent.params) {
+                    var errorMessage = "データ名'"+ paramName +"'が重複しています。";
+                    templateError(errorMessage, node);
+                }
+            } else {
+                parent.params = {};
+            }
+
+            var param = [];
+            // XXX: 1階層の単純な構成の想定。エラーチェックとかは一切しない
+            _.forEach(node.children, function(child) {
+                var o = {
+                    $value: child.text,
+                    $id: child.id
+                };
+                param.push(o);
+            });
+
+            parent.params[paramName] = param;
+
+            // 親の children の自分自身を null に
+            parent.children[index] = null;
+        });
+    }
+
+    // 旧: すべての alias（&NAME()）を tree から取り外し、所属 node にリストアップ
+    // 命名: templates
+    function collectTemplateDeclarations() {
+        forAllNodes_Recurse(root, null, -1, function(node, parent, index) { }, function(node, parent, index) {
+            if (parent === null) {
+                return;
+            }
+            if (node.kind !== kindUL) {
+                return;
+            }
+
+            var match = node.text.trim().match(/^&([A-Za-z_]\w*)\(\)$/);
+            if (match === null) {
+                return;
+            }
+
+            var templateName = match[1];
+
+            if ("templates" in parent) {
+                // 重複エラー
+                if (templateName in parent.templates) {
+                    var errorMessage = "テンプレート名'"+ templateName +"'が重複しています。（旧: エイリアス名）";
+                    templateError(errorMessage, node);
+                }
+            } else {
+                parent.templates = {};
+            }
+            parent.templates[templateName] = node;
+
+            // node の group 関係を template root からの offset 値に
+            // 木の中で宣言した場合でも大丈夫なように対応しておく
+            var templateGroup = node.group;
+            var templateDepthInGroup = node.depthInGroup;
+            forAllNodes_Recurse(node, null, -1, function(n, p, i) {
+                if (n.group === templateGroup) {
+                    // templateRoot と同じ group の node の depthInGroup は必ず 1 多いので引いておく
+                    n.depthInGroup -= templateDepthInGroup + 1;
+                }
+                n.group -= templateGroup;
+            });
+
+            // 親の children の自分自身を null に
+            parent.children[index] = null;
+
+            // TODO: 宣言時の defaultParameter 仕様は廃止方向（旧コメントを残置）
+        });
+    }
+
+    // 名前から tree をさかのぼって見つける（旧: findSubTree_Recurse）
+    // なければ null を返す
+    function findTemplate_Recurse(templateName, node) {
+        if (_.isUndefined(node) || node === null) {
+            return null;
+        }
+        if ("templates" in node) {
+            if (templateName in node.templates) {
+                return node.templates[templateName];
+            }
+        }
+        return findTemplate_Recurse(templateName, node.parent);
+    }
+
+    // ===== Template Reference Verification =====
+    // 問題がないか調べる
+    // 一度確認した template は isValid フラグ立て（json 出力前に delete）
+    // 旧: verifyReference
+    function verifyTemplateReference(templateRoot) {
+
+        function _recurse(templateNode, callStack) {
+            if (templateNode.isValidSubTree) {
+                // 旧フラグ名を流用（互換）
+                return;
+            }
+
+            if (templateNode.children.length === 0) {
+                var errorMessage = "テンプレートには1個以上の子ノードが必要です。（旧: エイリアス）";
+                throw new TemplateError(errorMessage, templateNode);
+            }
+
+            for (var i = 0; i < templateNode.children.length; i++) {
+                if (templateNode.children[i].group !== templateNode.group) {
+                    var errorMessage = "テンプレートの第2階層はグループ切り替えはできません。\nルート（テンプレート名の行）と同じマークにしてください（旧: エイリアス）";
+                    throw new TemplateError(errorMessage, templateNode);
                 }
             }
 
-            var subTreeName = subTree.text.slice(2, -1);
-            var lineObj = subTree.lineObj;
-            var callName = subTreeName + ":" + lineObj.filePath + ":" + lineObj.lineNum;
+            var templateName = templateNode.text.slice(2, -1); // "&NAME()"
+            var lineObj = templateNode.lineObj;
+            var callName = templateName + ":" + lineObj.filePath + ":" + lineObj.lineNum;
             if (_.indexOf(callStack, callName) >= 0) {
-                //WScript.Echo(callStack.toString()+"\n"+callName);
-                var errorMessage = "エイリアス'"+ subTreeName +"'に循環参照が存在します。";
-                throw new AliasError(errorMessage, subTree);
+                var errorMessage = "テンプレート'"+ templateName +"'に循環参照が存在します。（旧: エイリアス）";
+                throw new TemplateError(errorMessage, templateNode);
             }
             callStack.push(callName);
 
-            forAllNodes_Recurse(subTree, null, -1, function(node, parent, index) {
-                var match = node.text.trim().match(/^\*([A-Za-z_]\w*)\(.*\)$/);
+            forAllNodes_Recurse(templateNode, null, -1, function(n) {
+                var match = n.text.trim().match(/^\*([A-Za-z_]\w*)\(.*\)$/);
                 if (match === null) {
                     return;
                 }
-                //if (node.children.length > 0) {
-                //    // 参照は leaf 以外は認めないのでエラー
-                //    var errorMessage = "エイリアスを参照できるのは葉ノードだけです。";
-                //    throw new AliasError(errorMessage, node);
-                //}
-                var refSubTreeName = match[1];
+                var refTemplateName = match[1];
 
-                var refSubTree = findSubTree_Recurse(refSubTreeName, node.parent);
+                var refTemplate = findTemplate_Recurse(refTemplateName, n.parent);
 
                 // みつからなかった
-                if (refSubTree === null) {
-                    var errorMessage = "エイリアス'" + refSubTreeName + "'は存在しません。";
-                    throw new AliasError(errorMessage, node);
+                if (refTemplate === null) {
+                    var errorMessage = "テンプレート'" + refTemplateName + "'は存在しません。（旧: エイリアス）";
+                    throw new TemplateError(errorMessage, n);
                 }
 
-                _recurse(refSubTree, callStack);
+                _recurse(refTemplate, callStack);
             });
 
             callStack.pop();
-
-            subTree.isValidSubTree = true;
+            templateNode.isValidSubTree = true; // 互換目的の既存フラグを継続使用
         }
 
         try {
-            _recurse(subTreeRoot, []);
-        }
-        catch (e) {
+            _recurse(templateRoot, []);
+        } catch (e) {
             if (_.isUndefined(e.node) || _.isUndefined(e.errorMessage)){
                 throw e;
             }
-            //WScript.Echo(JSON.stringify(e, undefined, 4));
-            aliasError(e.errorMessage, e.node);
+            templateError(e.errorMessage, e.node);
         }
     }
-    
-    // node に sub tree の clone を追加する
-    // 展開前の状態で追加
-    function addSubTree(targetNode, targetIndex, subTreeName, parameters) {
-        function rollArray(targetNode, targetIndex, subTreeName, parameters) {
+
+    // ===== Template Expansion =====
+    // 旧: addSubTree
+    // node に template の clone を追加する（展開前の状態で追加）
+    function addTemplate(targetNode, targetIndex, templateName, parameters) {
+
+        // パラメータが配列ならローリング展開
+        function rollArray(targetNode, targetIndex, templateName, parameters) {
             var clonedTargetNodes = [];
             _.forEach(parameters, function(element, index) {
-                var node = cloneSubTree(targetNode);
+                var node = cloneTemplateTree(targetNode);
                 if (!_.isObject(element)) {
                     element = {
                         $value: element
@@ -2239,65 +2093,41 @@ var globalScope = (function(original) {
                 element.$index = index;
 
                 var paramJSON = JSON.stringify(element);
-                //var match = node.text.match(/^\*[A-Za-z_]\w*\((.*)\)$/);
-                //var paramName = match[1];
-
-                //node.text = "*" + subTreeName + "(" + paramName + "[" + index + "])" + match[2];
-                node.text = "*" + subTreeName + "(" + paramJSON + ")";
-                //var btnr = shell.Popup(node.text, 0, "node.text", ICON_EXCLA|BTN_OK_CANCL);
-                //if (btnr == BTNR_CANCL) {
-                //    WScript.Quit(0);
-                //}
+                node.text = "*" + templateName + "(" + paramJSON + ")";
                 clonedTargetNodes.push(node);
             });
 
             targetNode.parent.children[targetIndex] = null;
-            //Array.prototype.splice.apply(targetNode.parent.children, [targetIndex + 1, 0].concat(clonedTargetNodes));
             var a = targetNode.parent.children;
             var insertedChildren = a.slice(0, targetIndex+1).concat(clonedTargetNodes).concat(a.slice(targetIndex+1));
             insertedChildren[targetIndex] = null;
             targetNode.parent.children = insertedChildren;
 
-            // ここではノードの追加のみ
-            // 処理自体はループの後ろでされる想定
+            // ここではノードの追加のみ（処理は後段）
         }
 
-        //printJSON(parameters);
         if (_.isArray(parameters)) {
-            rollArray(targetNode, targetIndex, subTreeName, parameters);
+            rollArray(targetNode, targetIndex, templateName, parameters);
             return;
         }
 
-        var subTree = findSubTree_Recurse(subTreeName, targetNode.parent);
+        var templateRoot = findTemplate_Recurse(templateName, targetNode.parent);
 
         // みつからなかった
-        if (subTree === null) {
-            var errorMessage = "エイリアス'" + subTreeName + "'は存在しません。";
-            throw new AliasError(errorMessage, targetNode);
+        if (templateRoot === null) {
+            var errorMessage = "テンプレート'" + templateName + "'は存在しません。（旧: エイリアス）";
+            throw new TemplateError(errorMessage, targetNode);
         }
 
         // まず clone
-        subTree = cloneSubTree(subTree);
-
-        // TODO: defaultParameter 仕様は廃止の方向で
-        // TODO: テンプレ宣言時のデフォルト値仕様をやめて、この位置から参照可能な定数を入れておく
-        //_.forEach(subTree.defaultParameters, function(value, key) {
-        //    if (_.isUndefined(parameters[key])) {
-        //        parameters[key] = value;
-        //    }
-        //});
+        templateRoot = cloneTemplateTree(templateRoot);
 
         // 変数展開
-        //if (!_.isEmpty(parameters)) {
         {
-            //printJSON(parameters);
-
-            // この後の eval 内でプロパティに直接アクセスできるように
-            // primitive array のために必要な対応
+            // この後の eval 内でプロパティに直接アクセスできるように（primitive array のために必要な対応）
             if (_.isObject(parameters)) {
                 // XXX: いろいろやったらややこしいことになったので一旦はシンプルに追加
                 // XXX: ただこれをやると JSON.stringify が使えなくなるので極力避けたい
-                // XXX: ここではローカル変数で宣言して evalParameters にその $params 渡すとか…？
                 parameters.$params = _.assign(parameters);
 
                 var s = "var $scope = {};";
@@ -2306,23 +2136,12 @@ var globalScope = (function(original) {
                     if (_.isUndefined(value)) {
                         return;
                     }
-                    //var valueStr = JSON.stringify(value);
-                    //alert(valueStr);
-                    //if (_.isString(value)) {
-                    //    value = "'" + value + "'";
-                    //}
-                    //if (_.isArray(value)) {
-                    //    value = "[" + value + "]";
-                    //}
-                    //var s = key + "=" + valueStr;
                     s += "var " + key + "=parameters." + key + ";";
                 });
-                //s += "var $params=_.assign(parameters);"
                 eval(s);
             }
 
-            // 省略時はこれを使う
-            // 引数1個の場合を想定した仕様だけど、複数あってもエラーにはしないでおく
+            // 省略時はこれを使う（引数1個の想定）
             var defaultParam = "$value";
             var firstParam = _.find(_.keys(parameters), function(s) {
                 return s.substr(0, 1) != "$";
@@ -2332,15 +2151,15 @@ var globalScope = (function(original) {
             }
             defaultParam = "{{" + defaultParam + "}}";
 
-            forAllNodes_Recurse(subTree, null, -1, function(node, parent, index) {
+            // templateRoot 内の {{…}} を置換。false/undefined/null はノード削除トリガにする仕様
+            forAllNodes_Recurse(templateRoot, null, -1, function(n, p, i) {
                 // あるnodeに1個でも false 的なものが渡されたら、それ以下のnode削除
                 function replaceVariable(s) {
                     if (!s) {
                         return void(0);
                     }
 
-                    // {{}} のように省略した場合は、引数（無名の場合は $value）を指定したものとみなす
-                    // 引数1個の想定の仕様。引数が複数の場合は何が参照されるかは保証はない
+                    // {{}} のように省略した場合は、引数（無名の場合は $value）とみなす
                     s = s.replace(/\{\{\s*\}\}/g, defaultParam);
 
                     var toDelete = false;
@@ -2348,19 +2167,16 @@ var globalScope = (function(original) {
                         if (toDelete) {
                             return "";
                         }
-                        //k = k.trim();
                         var parameter;
-                        //var match = k.trim().match(/^eval\((.+)\)$/);
                         if (/^[\w\$\.\[\]]+$/.test(k)) {
                             // 変数そのままと . と [] でのアクセスだけ別処理
-                            // 少しでも処理が軽くなることを期待。意味なさそうだけど一応
                             parameter = _.get(parameters, k, null);
-                        }
-                        else {
+                        } else {
                             parameter = eval("(" + k + ")");
                         }
 
-                        // 明示的に省略を指定させたいので、未定義は対象外としておくことも考えたが、使い勝手的に省略で削除できる方が便利なので、そうする
+                        // 明示的に省略を指定させたいので、未定義は対象外としておくことも考えたが、
+                        // 使い勝手的に省略で削除できる方が便利なのでそうする
                         if (parameter === false || _.isUndefined(parameter) ||  _.isNull(parameter)) {
                             toDelete = true;
                             return "";
@@ -2370,250 +2186,165 @@ var globalScope = (function(original) {
                         }
                         return parameter;
                     }
-                    var replaced = s.replace( /\{\{\s*([^\}]+)\s*\}\}/g, replacer);
+                    var replaced = s.replace(/\{\{\s*([^\}]+)\s*\}\}/g, replacer);
                     return toDelete ? void(0) : replaced;
                 }
-                node.text = replaceVariable(node.text);
-                if (_.isUndefined(node.text)) {
-                    node.parent.children[index] = null;
+
+                n.text = replaceVariable(n.text);
+                if (_.isUndefined(n.text)) {
+                    n.parent.children[i] = null;
                     return;
                 }
-                node.comment = replaceVariable(node.comment);
-                node.imageFilePath = replaceVariable(node.imageFilePath);
+                n.comment = replaceVariable(n.comment);
+                n.imageFilePath = replaceVariable(n.imageFilePath);
             });
-            shrinkChildrenArray(subTree, null, -1);
+            shrinkChildrenArray(templateRoot, null, -1);
         }
 
-        // XXX: node に循環参照があるので JSON.stringify は使えない
-        //subTree = JSON.parse(JSON.stringify(subTree));
-
-        // subtree 内の subtree 呼び出し
-        forAllNodes_Recurse(subTree, null, -1, function(node, parent, index) {
-            if (parent === null) {
+        // template 内の template 呼び出し（ネスト展開）
+        forAllNodes_Recurse(templateRoot, null, -1, function(n, p, i) {
+            if (p === null) {
                 return;
             }
-            var match = node.text.trim().match(/^\*([A-Za-z_]\w*)\((.*)\)$/);
+            var match = n.text.trim().match(/^\*([A-Za-z_]\w*)\((.*)\)$/);
             if (match === null) {
                 return;
             }
-            var subTreeName = match[1];
+            var innerTemplateName = match[1];
 
             try {
-                var parsedParameters = evalParameters(match[2], node, parameters);
-            }
-            catch(e) {
+                var parsedParameters = evalTemplateParameters(match[2], n, parameters);
+            } catch(e) {
                 var errorMessage = "パラメータが不正です。\n\n" + e.message;
-                aliasError(errorMessage, node);
+                templateError(errorMessage, n);
             }
 
-            //if (!_.isArray(parsedParameters)) {
-            //    if (match[4] != "") {
-            //        (function(){
-            //            var functionName = match[4];
-            //            var f = null;
-            //            for (var parent = node.parent; parent !== null; parent = parent.parent) {
-            //                if (_.isUndefined(parent.params)) {
-            //                    continue;
-            //                }
-            //                if (functionName in parent.params) {
-            //                    var s = parent.params[functionName];
-            //                    f = Function.call(this, 'return ' + s)();
-            //                    break;
-            //                }
-            //            }
-            //            // TODO: 該当する関数が見つからない時にエラー出す
-            //            if (f) {
-            //                // 関数内で直接アクセスできるように
-            //                if (!_.isUndefined(node.tempParams)) {
-            //                    _.forEach(node.tempParams, function(value, key) {
-            //                        var valueStr = JSON.stringify(value, undefined, 4);
-            //                        var s = key + "=" + valueStr;
-            //                        eval(s);
-            //                    });
-            //                }
-            //                
-            //                var inputParameters = _.assign({}, parsedParameters);
-            //                // FIXME: 一旦全部見えるようにしておく。渡されたものだけ参照可能になるようにするべき
-            //                _.defaults(inputParameters, parameters);
-            //                var outputParameters = f(inputParameters);
-            //                // 触らなかったのはそのまま使えるように
-            //                parsedParameters = _.defaults(outputParameters, parsedParameters);
-            //            }
-            //        })();
-            //    }
-            //}
-
-            addSubTree(node, index, subTreeName, parsedParameters);
+            addTemplate(n, i, innerTemplateName, parsedParameters);
         });
 
-        // subtree の leaf に target の子ノードを追加する
+        // template の leaf に target の子ノードを追加する
         if (targetNode.children.length > 0) {
-            var targetClone = cloneSubTree(targetNode);
+            var targetClone = cloneTemplateTree(targetNode);
 
             // offset にしておく
-            forAllNodes_Recurse(targetClone, null, -1, function(node, parent, index) {
-                if (node.group === targetNode.group) {
-                    node.depthInGroup -= targetNode.depthInGroup;
+            forAllNodes_Recurse(targetClone, null, -1, function(n) {
+                if (n.group === targetNode.group) {
+                    n.depthInGroup -= targetNode.depthInGroup;
                 }
-                node.group -= targetNode.group;
+                n.group -= targetNode.group;
             });
-//            forAllNodes_Recurse(targetClone, null, -1, function(node, parent, index) {
-//                if (parent === null) {
-//                    return;
-//                }
-//                var match = node.text.trim().match(/^\*([A-Za-z_]\w*)\((.*)\)$/);
-//                if (match !== null) {
-//                    var subTreeName = match[1];
-//
-//                    try {
-//                        var parameters = evalParameters(match[2], node);
-//                    }
-//                    catch(e) {
-//                        var errorMessage = "パラメータが不正です。";
-//                        aliasError(errorMessage, node);
-//                    }
-//        
-//                    addSubTree(node, index, subTreeName, parameters);
-//                }
-//            });
 
-            forAllNodes_Recurse(subTree, null, -1, function(node, parent, index) {
-                if (node.children.length > 0) {
+            forAllNodes_Recurse(templateRoot, null, -1, function(n, p, i) {
+                if (n.children.length > 0) {
                     return;
                 }
                 // 内容は不問
-                if (_.has(node, 'attributes.sealed')) {
+                if (_.has(n, 'attributes.sealed')) {
                     return;
                 }
-                var subTreeLeaf = node;
-                var target = cloneSubTree(targetClone);
-                forAllNodes_Recurse(target, null, -1, function(node, parent, index) {
-                    if (node === null) {
+                var templateLeaf = n;
+                var target = cloneTemplateTree(targetClone);
+                forAllNodes_Recurse(target, null, -1, function(nn) {
+                    if (nn === null) {
                         return true;
                     }
-                    if (node.group === 0) {
-                        node.depthInGroup += subTreeLeaf.depthInGroup;
+                    if (nn.group === 0) {
+                        nn.depthInGroup += templateLeaf.depthInGroup;
                     }
-                    node.group += subTreeLeaf.group;
-                    if (node.children.length === 0) {
+                    nn.group += templateLeaf.group;
+                    if (nn.children.length === 0) {
                         // id を _ で連結
-                        node.id = subTreeLeaf.id + "_" + node.id;
+                        nn.id = templateLeaf.id + "_" + nn.id;
                         return true;
                     }
                 });
-                subTreeLeaf.children = target.children;
+                templateLeaf.children = target.children;
                 return true;
             });
         }
 
-        // subTree の 全 node の group と leaf の id を書き換える
-        forAllNodes_Recurse(subTree, null, -1, function(node, parent, index) {
-            if (node === null) {
+        // template の 全 node の group と leaf の id を書き換える
+        forAllNodes_Recurse(templateRoot, null, -1, function(n) {
+            if (n === null) {
                 return true;
             }
-            // group 関係は subtree root からのオフセットとして扱う
-            if (node.group === 0) {
-                node.depthInGroup += targetNode.depthInGroup;
+            // group 関係は template root からのオフセットとして扱う
+            if (n.group === 0) {
+                n.depthInGroup += targetNode.depthInGroup;
             }
-            node.group += targetNode.group;
-            if (node.children.length === 0) {
+            n.group += targetNode.group;
+            if (n.children.length === 0) {
                 // id を _ で連結
-                node.id = targetNode.id + "_" + node.id;
+                n.id = targetNode.id + "_" + n.id;
                 return true;
             }
         });
 
-        // splice で自分を subTree の children で置き換える
-        // ループを正しくたどれるように置き換えでなく、直後に挿入 + 削除予約
-        // splice は配列のまま渡せない。spread構文も使えないのでconcatとか使ってやる
-        //var insertedChildren = targetNode.parent.children.splice(targetIndex + 1, 0, subTree.children);
+        // splice で自分を template の children で置き換える（直後に挿入 + 自分は null 予約）
         var a = targetNode.parent.children;
-        // subTree の parent 書き換え
-        for (var i = 0; i < subTree.children.length; i++) {
-            if (subTree.children[i] === null) {
+        // template の parent 書き換え
+        for (var j = 0; j < templateRoot.children.length; j++) {
+            if (templateRoot.children[j] === null) {
                 continue;
             }
-            subTree.children[i].parent = targetNode.parent;
+            templateRoot.children[j].parent = targetNode.parent;
         }
-        var insertedChildren = a.slice(0, targetIndex+1).concat(subTree.children).concat(a.slice(targetIndex+1));
+        var insertedChildren = a.slice(0, targetIndex+1).concat(templateRoot.children).concat(a.slice(targetIndex+1));
         insertedChildren[targetIndex] = null;
         targetNode.parent.children = insertedChildren;
     }
 
-    // sub tree をインライン展開していく
-    forAllNodes_Recurse(root, null, -1, function(node, parent, index) {
-        if (node === null) {
-            return true;
-        }
-        // XXX: コピペを何とかする
-        var match = node.text.trim().match(/^\*([A-Za-z_]\w*)\((.*)\)$/);
-        if (match !== null) {
-            var subTreeName = match[1];
-
-            try {
-                var parameters = evalParameters(match[2], node, {});
+    // 旧: sub tree をインライン展開していく
+    function expandAllTemplateCalls() {
+        forAllNodes_Recurse(root, null, -1, function(node, parent, index) {
+            if (node === null) {
+                return true;
             }
-            catch(e) {
-                var errorMessage = "パラメータが不正です。\n\n" + e.message;
-                aliasError(errorMessage, node);
-            }
+            var match = node.text.trim().match(/^\*([A-Za-z_]\w*)\((.*)\)$/);
+            if (match !== null) {
+                var templateName = match[1];
 
-            // XXX: コピペを何とかする
-            //if (!_.isArray(parameters)) {
-            //    if (match[4] != "") {
-            //        (function(){
-            //            var functionName = match[4];
-            //            var f = null;
-            //            for (var parent = node.parent; parent !== null; parent = parent.parent) {
-            //                if (_.isUndefined(parent.params)) {
-            //                    continue;
-            //                }
-            //                if (functionName in parent.params) {
-            //                    var s = parent.params[functionName];
-            //                    f = Function.call(this, 'return ' + s)();
-            //                    break;
-            //                }
-            //            }
-            //            // TODO: 該当する関数が見つからない時にエラー出す
-            //            if (f) {
-            //                // 関数内で直接アクセスできるように
-            //                if (!_.isUndefined(node.tempParams)) {
-            //                    _.forEach(node.tempParams, function(value, key) {
-            //                        var valueStr = JSON.stringify(value, undefined, 4);
-            //                        var s = key + "=" + valueStr;
-            //                        eval(s);
-            //                    });
-            //                }
-            //                
-            //                var inputParameters = _.assign({}, parameters);
-            //                var outputParameters = f(inputParameters);
-            //                // 触らなかったのはそのまま使えるように
-            //                parameters = _.defaults(outputParameters, parameters);
-            //            }
-            //        })();
-            //    }
-            //}
-
-            try {
-                addSubTree(node, index, subTreeName, parameters);
-            }
-            catch (e) {
-                if (_.isUndefined(e.node) || _.isUndefined(e.errorMessage)){
-                    throw e;
+                try {
+                    var parameters = evalTemplateParameters(match[2], node, {});
+                } catch(e) {
+                    var errorMessage = "パラメータが不正です。\n\n" + e.message;
+                    templateError(errorMessage, node);
                 }
-                //WScript.Echo(JSON.stringify(e, undefined, 4));
-                aliasError(e.errorMessage, e.node);
+
+                try {
+                    addTemplate(node, index, templateName, parameters);
+                } catch (e) {
+                    if (_.isUndefined(e.node) || _.isUndefined(e.errorMessage)){
+                        throw e;
+                    }
+                    templateError(e.errorMessage, e.node);
+                }
             }
-        }
-    });
+        });
+    }
 
-    shrinkChildrenArrayforAllNodes();
+    // ===== Pipeline =====
+    // 1) データ定義（&name:）収集
+    collectTemplateParamsFromULNodes();
 
-    // leaf じゃなくなった node の id を削除
+    // 2) テンプレート宣言（&name()）収集
+    collectTemplateDeclarations();
+
+    // 3) null を除去して一次整形
+    shrinkChildrenArrayForAllNodes();
+
+    // （必要に応じてテンプレ宣言内部の参照検証）
+    // ※元コードでは全テンプレ事前展開/検証はコメントアウトされていたため、呼び出しは保持しません。
+    //    verifyTemplateReference(...) を使いたい場合は、parent.templates を走査して適宜呼び出してください。
+
+    // 4) ルートから *template(...) 呼び出しを順次インライン展開
+    expandAllTemplateCalls();
+
+    // 5) 再度 null 洗浄
+    shrinkChildrenArrayForAllNodes();
+
+    // 6) leaf じゃなくなった node の id を削除
     forAllNodes_Recurse(root, null, -1, function(node, parent, index) {
-        //if (node === null) {
-        //    return true;
-        //}
         if (node.kind !== kindUL) {
             return;
         }
@@ -2883,7 +2614,7 @@ CL.deletePropertyForAllNodes(root, "conditionalColumnValues");
 CL.deletePropertyForAllNodes(root, "lineObj");
 CL.deletePropertyForAllNodes(root, "indent");
 CL.deletePropertyForAllNodes(root, "parent");
-CL.deletePropertyForAllNodes(root, "subTrees");
+CL.deletePropertyForAllNodes(root, "templates");
 CL.deletePropertyForAllNodes(root, "isValidSubTree");
 CL.deletePropertyForAllNodes(root, "params");
 
