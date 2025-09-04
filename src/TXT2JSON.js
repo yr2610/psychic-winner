@@ -1774,19 +1774,17 @@ var globalScope = (function(original) {
 })(conf);
 //printJSON(globalScope);
 
-// テンプレート埋め込み（旧: エイリアス埋め込み）
+// テンプレート埋め込み
 // まずはすべてのノードについて調べ、親に登録
 (function() {
     var startTime = performance.now();
 
     // ===== Errors =====
-    // 旧: AliasError
     var TemplateError = function(errorMessage, node) {
         this.errorMessage = errorMessage;
         this.node = node;
     };
 
-    // 旧: aliasError
     function templateError(errorMessage, node) {
         var lineObj = node.lineObj;
         if (_.isUndefined(lineObj)) {
@@ -1797,7 +1795,6 @@ var globalScope = (function(original) {
     }
 
     // ===== Parameter Evaluation =====
-    // 旧: evalParameters
     function evalTemplateParameters(paramsStr, node, currentParameters) {
         paramsStr = paramsStr.trim();
         if (paramsStr == "") {
@@ -1814,7 +1811,7 @@ var globalScope = (function(original) {
             }
         }
 
-        // XXX: 処理が重すぎる（旧コメントそのまま）
+        // XXX: 処理が重すぎる
         function parseParams(referableParams, paramsStr) {
             // _.keys(), _.values() は列挙順は保証されてないので一応自前で詰めておく
             var keys = [];
@@ -1879,7 +1876,6 @@ var globalScope = (function(original) {
     }
 
     // ===== Tree Utilities =====
-    // 旧: cloneSubTree
     // templateTree に対してそのまま cloneDeep を呼ぶと、 parent をさかのぼって tree 全体が clone されるので対処
     function cloneTemplateTree(srcTemplateTree) {
         // 自前で tree をたどって全 node を shallow copy
@@ -1941,7 +1937,7 @@ var globalScope = (function(original) {
                 });
                 if (validChildren.length === 0) {
                     if (node.kind === kindH) {
-                        var errorMessage = "シート「"+ node.text +"」に有効な項目が存在しません\n※子階層がテンプレートのみとなっている可能性があります（旧: エイリアス）";
+                        var errorMessage = "シート「"+ node.text +"」に有効な項目が存在しません\n※子階層がテンプレートのみとなっている可能性があります";
                         var lineObj = node.lineObj;
                         MyError(errorMessage, lineObj.filePath, lineObj.lineNum);
                     }
@@ -1960,7 +1956,7 @@ var globalScope = (function(original) {
     }
 
     // ===== Template Collection =====
-    // 旧: &NAME: データ定義（params）を親に集約
+    // &NAME: データ定義（params）を親に集約
     function collectTemplateParamsFromULNodes() {
         forAllNodes_Recurse(root, null, -1, function(node, parent, index) { }, function(node, parent, index) {
             if (parent === null) {
@@ -2004,7 +2000,7 @@ var globalScope = (function(original) {
         });
     }
 
-    // 旧: すべての alias（&NAME()）を tree から取り外し、所属 node にリストアップ
+    // すべてのテンプレート宣言（&NAME()）を tree から取り外し、所属 node にリストアップ
     // 命名: templates
     function collectTemplateDeclarations() {
         forAllNodes_Recurse(root, null, -1, function(node, parent, index) { }, function(node, parent, index) {
@@ -2025,7 +2021,7 @@ var globalScope = (function(original) {
             if ("templates" in parent) {
                 // 重複エラー
                 if (templateName in parent.templates) {
-                    var errorMessage = "テンプレート名'"+ templateName +"'が重複しています。（旧: エイリアス名）";
+                    var errorMessage = "テンプレート名'"+ templateName +"'が重複しています。";
                     templateError(errorMessage, node);
                 }
             } else {
@@ -2048,11 +2044,11 @@ var globalScope = (function(original) {
             // 親の children の自分自身を null に
             parent.children[index] = null;
 
-            // TODO: 宣言時の defaultParameter 仕様は廃止方向（旧コメントを残置）
+            // TODO: 宣言時の defaultParameter 仕様は廃止方向
         });
     }
 
-    // 名前から tree をさかのぼって見つける（旧: findSubTree_Recurse）
+    // 名前から tree をさかのぼって見つける
     // なければ null を返す
     function findTemplate_Recurse(templateName, node) {
         if (_.isUndefined(node) || node === null) {
@@ -2069,7 +2065,6 @@ var globalScope = (function(original) {
     // ===== Template Reference Verification =====
     // 問題がないか調べる
     // 一度確認した template は isValid フラグ立て（json 出力前に delete）
-    // 旧: verifyReference
     function verifyTemplateReference(templateRoot) {
 
         function _recurse(templateNode, callStack) {
@@ -2079,13 +2074,13 @@ var globalScope = (function(original) {
             }
 
             if (templateNode.children.length === 0) {
-                var errorMessage = "テンプレートには1個以上の子ノードが必要です。（旧: エイリアス）";
+                var errorMessage = "テンプレートには1個以上の子ノードが必要です。";
                 throw new TemplateError(errorMessage, templateNode);
             }
 
             for (var i = 0; i < templateNode.children.length; i++) {
                 if (templateNode.children[i].group !== templateNode.group) {
-                    var errorMessage = "テンプレートの第2階層はグループ切り替えはできません。\nルート（テンプレート名の行）と同じマークにしてください（旧: エイリアス）";
+                    var errorMessage = "テンプレートの第2階層はグループ切り替えはできません。\nルート（テンプレート名の行）と同じマークにしてください";
                     throw new TemplateError(errorMessage, templateNode);
                 }
             }
@@ -2094,7 +2089,7 @@ var globalScope = (function(original) {
             var lineObj = templateNode.lineObj;
             var callName = templateName + ":" + lineObj.filePath + ":" + lineObj.lineNum;
             if (_.indexOf(callStack, callName) >= 0) {
-                var errorMessage = "テンプレート'"+ templateName +"'に循環参照が存在します。（旧: エイリアス）";
+                var errorMessage = "テンプレート'"+ templateName +"'に循環参照が存在します。";
                 throw new TemplateError(errorMessage, templateNode);
             }
             callStack.push(callName);
@@ -2110,7 +2105,7 @@ var globalScope = (function(original) {
 
                 // みつからなかった
                 if (refTemplate === null) {
-                    var errorMessage = "テンプレート'" + refTemplateName + "'は存在しません。（旧: エイリアス）";
+                    var errorMessage = "テンプレート'" + refTemplateName + "'は存在しません。";
                     throw new TemplateError(errorMessage, n);
                 }
 
@@ -2132,7 +2127,6 @@ var globalScope = (function(original) {
     }
 
     // ===== Template Expansion =====
-    // 旧: addSubTree
     // node に template の clone を追加する（展開前の状態で追加）
     function addTemplate(targetNode, targetIndex, templateName, parameters) {
 
@@ -2174,7 +2168,7 @@ var globalScope = (function(original) {
 
         // みつからなかった
         if (templateRoot === null) {
-            var errorMessage = "テンプレート'" + templateName + "'は存在しません。（旧: エイリアス）";
+            var errorMessage = "テンプレート'" + templateName + "'は存在しません。";
             throw new TemplateError(errorMessage, targetNode);
         }
 
@@ -2353,7 +2347,7 @@ var globalScope = (function(original) {
         targetNode.parent.children = insertedChildren;
     }
 
-    // 旧: sub tree をインライン展開していく
+    // テンプレートをインライン展開していく
     function expandAllTemplateCalls() {
         forAllNodes_Recurse(root, null, -1, function(node, parent, index) {
             if (node === null) {
