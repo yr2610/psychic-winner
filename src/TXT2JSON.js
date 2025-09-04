@@ -3,7 +3,66 @@
 }
 
 function printJSON(json) {
-    alert(JSON.stringify(json, undefined, 4));
+    alert(stringifyPretty(json));
+}
+
+var DROP_KEYS_LIST = [
+    "uidList",
+    "columnNames",
+    "defaultColumnValues",
+    "conditionalColumnValues",
+    "lineObj",
+    "indent",
+    "parent",
+    "templates",
+    "isValidSubTree",
+    "params",
+
+    "marker"    // 削除済みだけど一応
+];
+
+function toKeySet(keys) {
+  var set = {};
+  for (var i = 0; i < keys.length; i++) {
+    set[keys[i]] = 1;
+  }
+  return set;
+}
+
+var DEFAULT_DROP_KEYS = toKeySet(DROP_KEYS_LIST);
+
+// 速い replacer（循環は parent/マップ系を落として断つ）
+function makeFastJSONReplacer(dropKeys) {
+  var set = dropKeys
+    ? (typeof dropKeys.length === "number" ? toKeySet(dropKeys) : dropKeys)
+    : DEFAULT_DROP_KEYS;
+
+  return function replacer(key, value) {
+    if (typeof key === "string" && key !== "") {
+      // 1) 明示ドロップ（循環を断つのが最重要）
+      if (set[key]) return undefined;
+
+      // 2) "__" / "$$" 接頭辞を高速判定（regex使わない）
+      var c0 = key.charCodeAt(0);
+      if (c0 === 95) { // '_'
+        if (key.length > 1 && key.charCodeAt(1) === 95) return undefined; // "__"
+      } else if (c0 === 36) { // '$'
+        if (key.length > 1 && key.charCodeAt(1) === 36) return undefined; // "$$"
+      }
+    }
+    if (typeof value === "function") return undefined;
+    return value;
+  };
+}
+
+var JSON_REPLACER = makeFastJSONReplacer();
+
+// デフォは2スペース。必要に応じて "\t" や 4 に変えてOK
+function stringifyPretty(obj, indent) {
+    if (indent === undefined) {
+        indent = 2;
+    }
+    return JSON.stringify(obj, JSON_REPLACER, indent);
 }
 
 var shell = new ActiveXObject("WScript.Shell");
@@ -2606,18 +2665,6 @@ function deleteNullProperty_Recurse(node) {
 // 値が null のプロパティ（場所確保用）を削除する
 deleteNullProperty_Recurse(root);
 
-// JSON出力前に不要なプロパティを削除する
-CL.deletePropertyForAllNodes(root, "uidList");
-CL.deletePropertyForAllNodes(root, "columnNames");
-CL.deletePropertyForAllNodes(root, "defaultColumnValues");
-CL.deletePropertyForAllNodes(root, "conditionalColumnValues");
-CL.deletePropertyForAllNodes(root, "lineObj");
-CL.deletePropertyForAllNodes(root, "indent");
-CL.deletePropertyForAllNodes(root, "parent");
-CL.deletePropertyForAllNodes(root, "templates");
-CL.deletePropertyForAllNodes(root, "isValidSubTree");
-CL.deletePropertyForAllNodes(root, "params");
-
 forAllNodes_Recurse(root, null, -1, function(node, parent, index) {
     var headers = node.tableHeadersNonInputArea;
     if (!headers) {
@@ -2812,7 +2859,7 @@ Error(s);
 computeRootId();
 
 
-var sJson = JSON.stringify(root, undefined, 2);
+var sJson = stringifyPretty(root);
 
 // 直列な感じにしてみるテスト
 // 全部シートを１つの配列にすると json のサイズは半分ぐらいになるけど jsondiffpatch が簡単にスタック食いつぶすっぽい
