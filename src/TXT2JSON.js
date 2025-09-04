@@ -1517,7 +1517,7 @@ _.forEach(noIdNodes, function(infos) {
             return (element.node.text !== '[' && element.node.text !== ']');
         }
 
-        // alias 参照ノード
+        // テンプレート参照ノード
         if (/^\*[A-Za-z_]\w*\(.*\)$/.test(element.node.text.trim())) {
             return true;
         }
