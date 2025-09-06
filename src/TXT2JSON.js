@@ -1736,13 +1736,107 @@ forAllNodes_Recurse(root, null, -1, function(node, parent, index) {
 // marker は不要なので削除
 CL.deletePropertyForAllNodes(root, "marker");
 
-//function echoJson(obj, name) {
-//    var s = JSON.stringify(obj, undefined, 4);
-//    if (!_.isUndefined(name)) {
-//        s = name + ":\n" + s;
-//    }
-//    WScript.Echo(s);
-//}
+
+// 親スコープをプロトタイプ継承し、現在ノードのレイヤーを上書きで乗せる
+function extendScope(parentScope, layer) {
+    var base = parentScope || (typeof globalScope !== "undefined" ? globalScope : {});
+    if (!layer) return base;
+    var child = Object.create(base);
+    _.assign(child, layer); // 近いもの勝ち（シャドーイング）
+    return child;
+}
+
+// キャッシュ付き evaluator（プロトタイプ継承を素直に使える）
+var __EVAL_EXPR_CACHE = {};
+function evalExprWithScope(expr, scope) {
+    var fn = __EVAL_EXPR_CACHE[expr];
+    if (!fn) {
+        fn = new Function("scope", "with(scope){ return (" + expr + "); }");
+        __EVAL_EXPR_CACHE[expr] = fn;
+    }
+    return fn(scope);
+}
+
+// defaultParamKey はテンプレ内の "{{}}" 省略キー用（通常ノードでは null）
+function replacePlaceholdersInNode(node, scope, defaultParamKey) {
+    var defaultToken = defaultParamKey ? "{{" + defaultParamKey + "}}" : null;
+    var RE_EMPTY = /\{\{\s*\}\}/g;
+    var RE_EXPR  = /\{\{\s*([^\}]+)\s*\}\}/g;
+
+    function applyOnce(s) {
+        if (s === undefined || s === null) return void(0);
+
+        if (defaultToken) s = s.replace(RE_EMPTY, defaultToken);
+
+        var toDelete = false;
+        var out = s.replace(RE_EXPR, function(_, expr){
+            if (toDelete) return "";
+            var val;
+            if (/^[\w\$\.\[\]]+$/.test(expr)) {
+                // 単純参照（変数/ドット/ブラケット）は _.get でOK（プロトタイプを辿れる）
+                val = _.get(scope, expr, undefined);
+            } else {
+                // 任意式は with(scope) 評価（継承が効く）
+                try { val = evalExprWithScope(expr, scope); }
+                catch(e){ val = undefined; }
+            }
+            if (val === false || _.isUndefined(val) || _.isNull(val)) { toDelete = true; return ""; }
+            if (val === true) return "";
+            return val;
+        });
+
+        return toDelete ? void(0) : out;
+    }
+
+    // text/comment/image に適用
+    node.text = applyOnce(node.text);
+    if (_.isUndefined(node.text)) return false; // ノード削除
+    node.comment = applyOnce(node.comment);
+    node.imageFilePath = applyOnce(node.imageFilePath);
+    return true;
+}
+
+// 必要に応じてシート（root直下）へ擬似引数を渡したい場合はこのフックを実装
+function getSheetCallArgs(node) {
+    // 例: conf.SHEETS?.byId[node.id] / byName[node.text] を返す… 等
+    return null; // まずは無効
+}
+
+// ルートから降りながら、親→子にスコープを継承して {{}} を適用
+function applyPlaceholdersEverywhere() {
+    var scopeStack = [ (typeof globalScope !== "undefined" ? globalScope : {}) ];
+
+    forAllNodes_Recurse(
+        root, null, -1,
+        // pre
+        function(node, parent, index) {
+            if (!node) return true;
+
+            var parentScope = scopeStack[scopeStack.length - 1];
+            var localScope  = parentScope;
+
+            // 現在ノードの params を反映
+            if (node.params) localScope = extendScope(localScope, node.params);
+
+            // root直下（=シート）だけ疑似引数を上乗せしたい場合
+            if (parent === root) {
+                var callArgs = getSheetCallArgs(node);
+                if (callArgs) localScope = extendScope(localScope, callArgs);
+            }
+
+            scopeStack.push(localScope);
+
+            // *template(...) 行は展開側で処理するためスキップ
+            var m = node.text && node.text.trim().match(/^\*([A-Za-z_]\w*)\((.*)\)$/);
+            if (!m) {
+                var ok = replacePlaceholdersInNode(node, localScope, null);
+                if (!ok && parent) parent.children[index] = null;
+            }
+        },
+        // post
+        function() { scopeStack.pop(); }
+    );
+}
 
 //// 使用例
 //var globalScope = { foo: 1 };
@@ -1754,10 +1848,10 @@ CL.deletePropertyForAllNodes(root, "marker");
 //
 //var result = evaluateInScope("foo + bar", flatScope); // → 3
 function evaluateInScope(expr, scope) {
-  var keys = _.keys(scope);
-  var values = _.map(keys, function(k) { return scope[k]; });
-  var func = new Function(keys.join(","), "return " + expr + ";");
-  return func.apply(null, values);
+    var keys = _.keys(scope);
+    var values = _.map(keys, function(k) { return scope[k]; });
+    var func = new Function(keys.join(","), "return " + expr + ";");
+    return func.apply(null, values);
 }
 
 // 一番上の階層の upper snake case なプロパティをシートから閲覧できるようにする
