@@ -2423,7 +2423,7 @@ var globalScope = (function(original) {
 
     // （任意）テンプレ外ノードにも {{...}} を適用するプリパス
     // まずは動作確認のため、必要時にだけ手動で呼んでください
-    // applyPlaceholdersEverywhere();
+    applyPlaceholdersEverywhere();
 
     // （必要に応じてテンプレ宣言内部の参照検証）
     // ※元コードでは全テンプレ事前展開/検証はコメントアウトされていたため、呼び出しは保持しません。
