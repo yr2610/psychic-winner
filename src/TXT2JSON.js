@@ -1769,7 +1769,7 @@ function replacePlaceholdersInNode(node, scope, defaultParamKey) {
         if (defaultToken) s = s.replace(RE_EMPTY, defaultToken);
 
         var toDelete = false;
-        var out = s.replace(RE_EXPR, function(_, expr){
+        var out = s.replace(RE_EXPR, function(__, expr){
             if (toDelete) return "";
             var val;
             if (/^[\w\$\.\[\]]+$/.test(expr)) {
@@ -2269,81 +2269,22 @@ var globalScope = (function(original) {
         // まず clone
         templateRoot = cloneTemplateTree(templateRoot);
 
-        // 変数展開
+        // 変数展開（共通 evaluator で置換）
         {
-            // この後の eval 内でプロパティに直接アクセスできるように（primitive array のために必要な対応）
-            if (_.isObject(parameters)) {
-                // XXX: いろいろやったらややこしいことになったので一旦はシンプルに追加
-                // XXX: ただこれをやると JSON.stringify が使えなくなるので極力避けたい
-                parameters.$params = _.assign(parameters);
+            if (!parameters || typeof parameters !== "object") parameters = {};
+            
+            // 呼び出し引数を最優先レイヤーとして積む
+            var callSiteScope = (typeof globalScope !== "undefined") ? globalScope : {};
+            var parametersScope = extendScope(callSiteScope, parameters);
 
-                var s = "var $scope = {};";
-                _.forEach(parameters, function(value, key) {
-                    // XXX: key が添字な文字列、value が undefined な値が来ることがあるので対処。理由は調査できてない…
-                    if (_.isUndefined(value)) {
-                        return;
-                    }
-                    s += "var " + key + "=parameters." + key + ";";
-                });
-                eval(s);
-            }
-
-            // 省略時はこれを使う（引数1個の想定）
+            // 省略時はこれを使う（引数1個を想定）
             var defaultParam = "$value";
-            var firstParam = _.find(_.keys(parameters), function(s) {
-                return s.substr(0, 1) != "$";
-            });
-            if (!_.isUndefined(firstParam)) {
-                defaultParam = firstParam;
-            }
-            defaultParam = "{{" + defaultParam + "}}";
+            var firstParam = _.find(_.keys(parameters), function(s) { return s.substr(0,1) != "$"; });
+            if (!_.isUndefined(firstParam)) defaultParam = firstParam;
 
-            // templateRoot 内の {{…}} を置換。false/undefined/null はノード削除トリガにする仕様
             forAllNodes_Recurse(templateRoot, null, -1, function(n, p, i) {
-                // あるnodeに1個でも false 的なものが渡されたら、それ以下のnode削除
-                function replaceVariable(s) {
-                    if (!s) {
-                        return void(0);
-                    }
-
-                    // {{}} のように省略した場合は、引数（無名の場合は $value）とみなす
-                    s = s.replace(/\{\{\s*\}\}/g, defaultParam);
-
-                    var toDelete = false;
-                    function replacer(m, k) {
-                        if (toDelete) {
-                            return "";
-                        }
-                        var parameter;
-                        if (/^[\w\$\.\[\]]+$/.test(k)) {
-                            // 変数そのままと . と [] でのアクセスだけ別処理
-                            parameter = _.get(parameters, k, null);
-                        } else {
-                            parameter = eval("(" + k + ")");
-                        }
-
-                        // 明示的に省略を指定させたいので、未定義は対象外としておくことも考えたが、
-                        // 使い勝手的に省略で削除できる方が便利なのでそうする
-                        if (parameter === false || _.isUndefined(parameter) ||  _.isNull(parameter)) {
-                            toDelete = true;
-                            return "";
-                        }
-                        if (parameter === true) {
-                            return "";
-                        }
-                        return parameter;
-                    }
-                    var replaced = s.replace(/\{\{\s*([^\}]+)\s*\}\}/g, replacer);
-                    return toDelete ? void(0) : replaced;
-                }
-
-                n.text = replaceVariable(n.text);
-                if (_.isUndefined(n.text)) {
-                    n.parent.children[i] = null;
-                    return;
-                }
-                n.comment = replaceVariable(n.comment);
-                n.imageFilePath = replaceVariable(n.imageFilePath);
+                var ok = replacePlaceholdersInNode(n, parametersScope, defaultParam);
+                if (!ok) { n.parent.children[i] = null; return; }
             });
             shrinkChildrenArray(templateRoot, null, -1);
         }
@@ -2479,6 +2420,10 @@ var globalScope = (function(original) {
 
     // 3) null を除去して一次整形
     shrinkChildrenArrayForAllNodes();
+
+    // （任意）テンプレ外ノードにも {{...}} を適用するプリパス
+    // まずは動作確認のため、必要時にだけ手動で呼んでください
+    // applyPlaceholdersEverywhere();
 
     // （必要に応じてテンプレ宣言内部の参照検証）
     // ※元コードでは全テンプレ事前展開/検証はコメントアウトされていたため、呼び出しは保持しません。
