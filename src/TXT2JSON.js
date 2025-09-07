@@ -2222,7 +2222,7 @@ var globalScope = (function(original) {
 
     // ===== Template Expansion =====
     // node に template の clone を追加する（展開前の状態で追加）
-    function addTemplate(targetNode, targetIndex, templateName, parameters) {
+    function addTemplate(targetNode, targetIndex, templateName, parameters, callSiteScope) {
 
         // パラメータが配列ならローリング展開
         function rollArray(targetNode, targetIndex, templateName, parameters) {
@@ -2269,23 +2269,31 @@ var globalScope = (function(original) {
         // まず clone
         templateRoot = cloneTemplateTree(templateRoot);
 
-        // 変数展開（共通 evaluator で置換）
+        // 変数展開（共通 evaluator）
         {
+            // 呼び出し地点のスコープに引数を最上段で重ねる
             if (!parameters || typeof parameters !== "object") parameters = {};
-            
-            // 呼び出し引数を最優先レイヤーとして積む
-            var callSiteScope = (typeof globalScope !== "undefined") ? globalScope : {};
-            var parametersScope = extendScope(callSiteScope, parameters);
+            var parametersScopeTop = extendScope(callSiteScope, parameters);
 
             // 省略時はこれを使う（引数1個を想定）
             var defaultParam = "$value";
             var firstParam = _.find(_.keys(parameters), function(s) { return s.substr(0,1) != "$"; });
             if (!_.isUndefined(firstParam)) defaultParam = firstParam;
 
-            forAllNodes_Recurse(templateRoot, null, -1, function(n, p, i) {
-                var ok = replacePlaceholdersInNode(n, parametersScope, defaultParam);
-                if (!ok) { n.parent.children[i] = null; return; }
-            });
+            // ★ テンプレツリー内でも params を積みながら置換
+            var tplStack = [ parametersScopeTop ];
+            forAllNodes_Recurse(
+                templateRoot, null, -1,
+                function(n, p, i) {
+                    if (!n) return true;
+                    var parentScope = tplStack[tplStack.length - 1];
+                    var localScope  = n.params ? extendScope(parentScope, n.params) : parentScope;
+                    tplStack.push(localScope);
+                    var ok = replacePlaceholdersInNode(n, localScope, defaultParam);
+                    if (!ok) { n.parent.children[i] = null; return; }
+                },
+                function(){ tplStack.pop(); }
+            );
             shrinkChildrenArray(templateRoot, null, -1);
         }
 
@@ -2384,31 +2392,39 @@ var globalScope = (function(original) {
 
     // テンプレートをインライン展開していく
     function expandAllTemplateCalls() {
-        forAllNodes_Recurse(root, null, -1, function(node, parent, index) {
-            if (node === null) {
-                return true;
-            }
-            var match = node.text.trim().match(/^\*([A-Za-z_]\w*)\((.*)\)$/);
-            if (match !== null) {
-                var templateName = match[1];
+        var scopeStack = [ (typeof globalScope !== "undefined" ? globalScope : {}) ];
 
-                try {
-                    var parameters = evalTemplateParameters(match[2], node, {});
-                } catch(e) {
-                    var errorMessage = "パラメータが不正です。\n\n" + e.message;
-                    templateError(errorMessage, node);
-                }
+        forAllNodes_Recurse(
+            root, null, -1,
+            function(node, parent, index) {
+                if (!node) return true;
 
-                try {
-                    addTemplate(node, index, templateName, parameters);
-                } catch (e) {
-                    if (_.isUndefined(e.node) || _.isUndefined(e.errorMessage)){
-                        throw e;
+                var parentScope = scopeStack[scopeStack.length - 1];
+                var localScope  = parentScope;
+                if (node.params) localScope = extendScope(localScope, node.params);
+                scopeStack.push(localScope);
+
+                var match = node.text && node.text.trim().match(/^\*([A-Za-z_]\w*)\((.*)\)$/);
+                if (match) {
+                    var templateName = match[1];
+                    var parameters;
+                    try {
+                        parameters = evalTemplateParameters(match[2], node, {});
+                    } catch(e) {
+                        templateError("パラメータが不正です。\n\n" + e.message, node);
                     }
-                    templateError(e.errorMessage, e.node);
+
+                    try {
+                        // ★ 呼び出し地点のスコープを addTemplate に渡す
+                        addTemplate(node, index, templateName, parameters, localScope);
+                    } catch (e) {
+                        if (_.isUndefined(e.node) || _.isUndefined(e.errorMessage)) throw e;
+                        templateError(e.errorMessage, e.node);
+                    }
                 }
-            }
-        });
+            },
+            function() { scopeStack.pop(); }
+        );
     }
 
     // ===== Pipeline =====
