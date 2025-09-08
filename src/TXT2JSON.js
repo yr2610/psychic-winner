@@ -21,6 +21,10 @@ var DROP_KEYS_LIST = [
     "$args",
     "$params",
 
+    "$get",
+    "$set",
+    "$defaults",
+
     "marker"    // 削除済みだけど一応
 ];
 
@@ -2241,6 +2245,48 @@ var globalScope = (function(original) {
         scope.$params = copy; // 互換のため当面残す
     }
 
+    function execInScope(code, scope) {
+        var fn = new Function("scope", "with(scope){\n" + code + "\n}");
+        return fn(scope);
+    }
+
+    function installInitHelpers(scope) {
+        scope.$get = function(k){ return (k in scope) ? scope[k] : undefined; };
+        scope.$set = function(k,v){ scope[k] = v; };
+        scope.$defaults = function(obj){
+            if (!obj || typeof obj !== "object") return;
+            for (var k in obj) if (obj.hasOwnProperty(k) && !(k in scope)) scope[k] = obj[k];
+        };
+    }
+
+    function runInitDirectives(tplRoot, scope) {
+        var changed = false;
+        for (var i = 0; i < tplRoot.children.length; i++) {
+            var n = tplRoot.children[i];
+            if (!n || n.kind !== kindUL) continue;
+            var m = (n.text || "").trim().match(/^@init(?:\s*:\s*(.*))?$/);
+            if (!m) continue;
+
+            var code = "";
+            if (m[1]) code += m[1] + "\n";
+            _.forEach(n.children, function(c){
+                if (c && c.kind === kindUL && c.text) code += c.text + "\n";
+            });
+
+            try {
+                installInitHelpers(scope);
+                execInScope(code, scope);
+            } catch (e) {
+                templateError("init 実行エラー:\n" + e.message, n);
+            } finally {
+                delete scope.$get; delete scope.$set; delete scope.$defaults;
+            }
+            tplRoot.children[i] = null; // 指令ノードは消す
+            changed = true;
+        }
+        if (changed) shrinkChildrenArray(tplRoot, null, -1);
+    }
+
     // ===== Template Expansion =====
     // node に template の clone を追加する（展開前の状態で追加）
     function addTemplate(targetNode, targetIndex, templateName, parameters, callSiteScope) {
@@ -2303,6 +2349,8 @@ var globalScope = (function(original) {
             var firstParam = _.find(_.keys(parameters), function(s) { return s.substr(0,1) != "$"; });
             if (!_.isUndefined(firstParam)) defaultParam = firstParam;
 
+            runInitDirectives(templateRoot, parametersScopeTop);
+
             // ★ テンプレツリー内でも params を積みながら置換
             var tplStack = [ parametersScopeTop ];
             forAllNodes_Recurse(
@@ -2321,7 +2369,12 @@ var globalScope = (function(original) {
         }
 
         // template 内の template 呼び出し（ネスト展開）
+        var tplScopeStack = [ parametersScopeTop ];
         forAllNodes_Recurse(templateRoot, null, -1, function(n, p, i) {
+            var parentScope = tplScopeStack[tplScopeStack.length - 1];
+            var localScope  = n && n.params ? extendScope(parentScope, n.params) : parentScope;
+            tplScopeStack.push(localScope);
+
             if (p === null) {
                 return;
             }
@@ -2330,16 +2383,16 @@ var globalScope = (function(original) {
                 return;
             }
             var innerTemplateName = match[1];
-
+            var parsedParameters;
             try {
-                var parsedParameters = evalTemplateParameters(match[2], n, parameters);
+                parsedParameters = evalTemplateParameters(match[2], n, localScope);
             } catch(e) {
                 var errorMessage = "パラメータが不正です。\n\n" + e.message;
                 templateError(errorMessage, n);
             }
 
-            addTemplate(n, i, innerTemplateName, parsedParameters);
-        });
+            addTemplate(n, i, innerTemplateName, parsedParameters, localScope);
+        }, function(){ tplScopeStack.pop(); });
 
         // template の leaf に target の子ノードを追加する
         if (targetNode.children.length > 0) {
