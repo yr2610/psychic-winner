@@ -18,6 +18,9 @@ var DROP_KEYS_LIST = [
     "isValidSubTree",
     "params",
 
+    "$args",
+    "$params",
+
     "marker"    // 削除済みだけど一応
 ];
 
@@ -1896,6 +1899,10 @@ var globalScope = (function(original) {
         }
 
         var referableParams = {};
+        // まずグローバル（あれば）
+        if (typeof globalScope !== "undefined") {
+          _.defaults(referableParams, globalScope);
+        }
         if (!_.isUndefined(currentParameters)) {
             _.defaults(referableParams, currentParameters);
         }
@@ -1904,6 +1911,9 @@ var globalScope = (function(original) {
                 _.defaults(referableParams, parent.params);
             }
         }
+
+        // ★ 呼び出し引数の“丸ごと”参照を提供（互換用）
+        attachArgAliases(referableParams, currentParameters);
 
         // XXX: 処理が重すぎる
         function parseParams(referableParams, paramsStr) {
@@ -2220,6 +2230,17 @@ var globalScope = (function(original) {
         }
     }
 
+    function attachArgAliases(scope, parameters) {
+        // 引数がオブジェクト/配列で、かつ空でない時だけ付与
+        if (!parameters || typeof parameters !== "object") return;
+        var isEmpty = _.isArray(parameters) ? parameters.length === 0 : _.isEmpty(parameters);
+        if (isEmpty) return; // 引数が空なら付与しない
+
+        var copy = _.isArray(parameters) ? parameters.slice() : _.assign({}, parameters);
+        scope.$args   = copy;
+        scope.$params = copy; // 互換のため当面残す
+    }
+
     // ===== Template Expansion =====
     // node に template の clone を追加する（展開前の状態で追加）
     function addTemplate(targetNode, targetIndex, templateName, parameters, callSiteScope) {
@@ -2274,6 +2295,8 @@ var globalScope = (function(original) {
             // 呼び出し地点のスコープに引数を最上段で重ねる
             if (!parameters || typeof parameters !== "object") parameters = {};
             var parametersScopeTop = extendScope(callSiteScope, parameters);
+
+            attachArgAliases(parametersScopeTop, parameters);
 
             // 省略時はこれを使う（引数1個を想定）
             var defaultParam = "$value";
