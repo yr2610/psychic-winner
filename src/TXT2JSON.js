@@ -1743,6 +1743,10 @@ forAllNodes_Recurse(root, null, -1, function(node, parent, index) {
 // marker は不要なので削除
 CL.deletePropertyForAllNodes(root, "marker");
 
+var PLACEHOLDER_WARN_ON_UNDEFINED = true;   // まずは警告だけ出す
+var PLACEHOLDER_LEGACY_DROP       = true;   // 互換: 裸 {{…}} は falsy で行削除
+var PLACEHOLDER_STRICT_DEFAULT    = false;  // 将来: 裸 {{…}} を“必須”寄りに
+var Q_BOOL_STRICT                 = false;  // {{?}} を bool 限定にするか
 
 // 親スコープをプロトタイプ継承し、現在ノードのレイヤーを上書きで乗せる
 function extendScope(parentScope, layer) {
@@ -1764,6 +1768,80 @@ function evalExprWithScope(expr, scope) {
     return fn(scope);
 }
 
+var SIMPLE_PATH_RE = /^[\w\$\.\[\]]+$/;
+function evaluateExprOrPath(expr, scope) {
+    // 単純参照（変数/ドット/ブラケット）は _.get でOK（プロトタイプを辿れる）
+    if (SIMPLE_PATH_RE.test(expr)) {
+        return _.get(scope, expr, void 0);
+    }
+    // 任意式は with(scope) 評価（継承が効く）
+    try {
+        return evalExprWithScope(expr, scope);
+    } catch (e) {
+        return void 0;
+    }
+}
+
+function isDropByQ(val) {
+    if (Q_BOOL_STRICT) {
+        if (typeof val !== "boolean") throw new Error("{{?}} は boolean のみ許可: " + val);
+        return (val === false);
+    }
+    // 緩和モード: false/null/undefined で削除
+    return (val === false || val === null || val === void 0);
+}
+
+function evalPlaceholderToken(raw, scope/*, node*/) {
+    var s = (raw || "").trim();
+    var mode = "legacy";
+    if (s.charAt(0) === "?") {
+        mode = "dropOnFalsy";
+        s = s.slice(1).trim();
+    }
+    if (s.charAt(s.length-1) === "!") {
+        mode = "require";
+        s = s.slice(0, -1).trim();
+    }
+
+    var val = evaluateExprOrPath(s, scope);
+
+    // 必須（明示 ! または全体厳格）
+    if (mode === "require" || PLACEHOLDER_STRICT_DEFAULT) {
+        if (val === void 0 || val === null) {
+            // 必須未定義はエラー
+            throw new Error("必須プレースホルダ未定義: " + s);
+        }
+    }
+
+    // 明示の ?（または互換の裸）で falsy → 行削除
+    if (mode === "dropOnFalsy") {
+        return {
+            drop: isDropByQ(val),
+            text: isDropByQ(val) ? "" : String(val)
+        };
+    }
+
+    if (mode === "legacy" && PLACEHOLDER_LEGACY_DROP) {
+        var falsyLegacy = (val === false || val === void 0 || val === null);
+        return {
+            drop: falsyLegacy,
+            text: falsyLegacy ? "" : (val === true ? "" : String(val))
+        };
+    }
+
+    // 警告だけ
+    if (PLACEHOLDER_WARN_ON_UNDEFINED && (val === void 0 || val === null)) {
+        // TODO: ロガーに差し替え
+        // warn("未定義プレースホルダ: " + s, node && node.lineObj);
+    }
+
+    // true は空文字、null/undefined は空
+    return {
+        drop: false,
+        text: (val === true ? "" : (val == null ? "" : String(val)))
+    };
+}
+
 // defaultParamKey はテンプレ内の "{{}}" 省略キー用（通常ノードでは null）
 function replacePlaceholdersInNode(node, scope, defaultParamKey) {
     var defaultToken = defaultParamKey ? "{{" + defaultParamKey + "}}" : null;
@@ -1771,33 +1849,28 @@ function replacePlaceholdersInNode(node, scope, defaultParamKey) {
     var RE_EXPR  = /\{\{\s*([^\}]+)\s*\}\}/g;
 
     function applyOnce(s) {
-        if (s === undefined || s === null) return void(0);
+        if (s === void 0 || s === null) return void 0;
 
         if (defaultToken) s = s.replace(RE_EMPTY, defaultToken);
 
         var toDelete = false;
         var out = s.replace(RE_EXPR, function(__, expr){
             if (toDelete) return "";
-            var val;
-            if (/^[\w\$\.\[\]]+$/.test(expr)) {
-                // 単純参照（変数/ドット/ブラケット）は _.get でOK（プロトタイプを辿れる）
-                val = _.get(scope, expr, undefined);
-            } else {
-                // 任意式は with(scope) 評価（継承が効く）
-                try { val = evalExprWithScope(expr, scope); }
-                catch(e){ val = undefined; }
+
+            var hit = evalPlaceholderToken(expr, scope, node);
+            if (hit.drop) {
+                toDelete = true;
+                return "";
             }
-            if (val === false || _.isUndefined(val) || _.isNull(val)) { toDelete = true; return ""; }
-            if (val === true) return "";
-            return val;
+            return hit.text;
         });
 
-        return toDelete ? void(0) : out;
+        return toDelete ? void 0 : out;
     }
 
     // text/comment/image に適用
     node.text = applyOnce(node.text);
-    if (_.isUndefined(node.text)) return false; // ノード削除
+    if (node.text === void 0) return false; // ノード削除
     node.comment = applyOnce(node.comment);
     node.imageFilePath = applyOnce(node.imageFilePath);
     return true;
