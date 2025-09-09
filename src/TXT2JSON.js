@@ -2251,7 +2251,7 @@ var globalScope = (function(original) {
     }
 
     function installInitHelpers(scope) {
-        scope.$get = function(k){ return (k in scope) ? scope[k] : undefined; };
+        scope.$get = function(k){ return (k in scope) ? scope[k] : void 0; };
         scope.$set = function(k,v){ scope[k] = v; };
         scope.$defaults = function(obj){
             if (!obj || typeof obj !== "object") return;
