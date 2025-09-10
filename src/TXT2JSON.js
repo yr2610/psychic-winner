@@ -25,6 +25,13 @@ var DROP_KEYS_LIST = [
     "$set",
     "$defaults",
 
+    "$index1",
+    "$count",
+    "$isFirst",
+    "$isLast",
+    "$isOdd",
+    "$isEven",
+
     "marker"    // 削除済みだけど一応
 ];
 
@@ -37,6 +44,37 @@ function toKeySet(keys) {
 }
 
 var DEFAULT_DROP_KEYS = toKeySet(DROP_KEYS_LIST);
+
+// --- numeric repeat sugar (lodash 3.10.1 前提) ---
+var ENABLE_NUMERIC_REPEAT = (conf && conf.ENABLE_NUMERIC_REPEAT === false) ? false : true;
+var MAX_REPEAT = (conf && conf.MAX_REPEAT) || 500;
+
+function toRepeatList(arg){
+  if (_.isArray(arg)) return arg;               // 既存の配列はそのまま
+  if (!ENABLE_NUMERIC_REPEAT) return null;
+
+  if (typeof arg === "number"){                 // *Foo(5)
+    var n = Math.max(0, Math.min(arg, MAX_REPEAT));
+    return _.times(n, function(){ return { $value: undefined }; });
+  }
+  if (arg && typeof arg.$times === "number"){   // *Foo({ $times: 5, ... })
+    var m = Math.max(0, Math.min(arg.$times, MAX_REPEAT));
+    return _.times(m, _.constant(arg));         // 同一参照でOK（必要なら _.clone に変更）
+  }
+  return null;
+}
+
+function buildLoopMeta(k, total){
+  return {
+    $index:  k,
+    $index1: k + 1,
+    $count:  total,
+    $isFirst: (k === 0),
+    $isLast:  (k === total - 1),
+    $isOdd:   ((k % 2) === 1),
+    $isEven:  ((k % 2) === 0)
+  };
+}
 
 // 速い replacer（循環は parent/マップ系を落として断つ）
 function makeFastJSONReplacer(dropKeys) {
@@ -2365,9 +2403,10 @@ var globalScope = (function(original) {
     function addTemplate(targetNode, targetIndex, templateName, parameters, callSiteScope) {
 
         // パラメータが配列ならローリング展開
-        function rollArray(targetNode, targetIndex, templateName, parameters) {
+        function rollArray(targetNode, targetIndex, templateName, list) {
             var clonedTargetNodes = [];
-            _.forEach(parameters, function(element, index) {
+            var total = list.length;
+            _.forEach(list, function(element, index) {
                 var node = cloneTemplateTree(targetNode);
                 if (!_.isObject(element)) {
                     element = {
@@ -2377,7 +2416,8 @@ var globalScope = (function(original) {
                 var elementId = ("$id" in element) ? element.$id : "i" + index;
                 node.id = targetNode.id + "_" + elementId;
 
-                element.$index = index;
+                // ループメタを付与
+                element = _.assign({}, element, buildLoopMeta(index, total));
 
                 var paramJSON = JSON.stringify(element);
                 node.text = "*" + templateName + "(" + paramJSON + ")";
@@ -2393,8 +2433,10 @@ var globalScope = (function(original) {
             // ここではノードの追加のみ（処理は後段）
         }
 
-        if (_.isArray(parameters)) {
-            rollArray(targetNode, targetIndex, templateName, parameters);
+        // 数値/{$times:...}/配列 を一律リスト化
+        var __list = toRepeatList(parameters) || (_.isArray(parameters) ? parameters : null);
+        if (__list) {
+            rollArray(targetNode, targetIndex, templateName, __list);
             return;
         }
 
