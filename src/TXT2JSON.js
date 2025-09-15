@@ -1806,7 +1806,8 @@ function evalExprWithScope(expr, scope) {
     return fn(scope);
 }
 
-var SIMPLE_PATH_RE = /^[\w\$\.\[\]]+$/;
+// [] の中は数値だけ許可（動的は式評価へフォールバックさせる）
+var SIMPLE_PATH_RE = /^[\w$]+(?:\.[\w$]+|\[\d+\])*$/;
 function evaluateExprOrPath(expr, scope) {
     // 単純参照（変数/ドット/ブラケット）は _.get でOK（プロトタイプを辿れる）
     if (SIMPLE_PATH_RE.test(expr)) {
@@ -2618,6 +2619,18 @@ var globalScope = (function(original) {
         );
     }
 
+    // すべての展開・置換が終わった最後に呼ぶ
+    function dropInitNodesEverywhere(root) {
+        forAllNodes_Recurse(root, null, -1, function(n, p, i) {
+            if (!n || n.kind !== "UL") return;
+            var t = (n.text || "").trim();
+            if (/^@init(?:\s*:|$)/.test(t)) {
+                p.children[i] = null;
+            }
+        });
+        shrinkChildrenArray(root, null, -1);
+    }
+
     // ===== Pipeline =====
     // 1) データ定義（&name:）収集
     collectTemplateParamsFromULNodes();
@@ -2638,6 +2651,8 @@ var globalScope = (function(original) {
 
     // 4) ルートから *template(...) 呼び出しを順次インライン展開
     expandAllTemplateCalls();
+
+    dropInitNodesEverywhere(root);
 
     // 5) 再度 null 洗浄
     shrinkChildrenArrayForAllNodes();
