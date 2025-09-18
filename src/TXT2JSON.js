@@ -2362,6 +2362,81 @@ var globalScope = (function(original) {
         return fn(scope);
     }
 
+    // ----- @init をテンプレート外でも実行する -----
+    function runInitDirectivesGlobally(root){
+        // 共有ベース：未定義なら一度だけ {} を割り当てて以後共有
+        if (typeof globalScope === "undefined") { globalScope = {}; }
+        var scopeStack = [ globalScope ];
+        forAllNodes_Recurse(
+            root, null, -1,
+            function(node, parent, index){
+                if (!node) return true;
+                var parentScope = scopeStack[scopeStack.length - 1];
+                var localScope = parentScope;
+                if (node.params) localScope = extendScope(localScope, node.params);
+                scopeStack.push(localScope);
+
+                // UL の @init[: コード] を検出
+                if (node.kind === kindUL) {
+                    var t = (node.text || "").trim();
+                    var m = t.match(/^@init(?:\s*:\s*(.*))?$/);
+                    if (m) {
+                        var code = "";
+                        if (m[1]) code += m[1] + "\n";
+                        _.forEach(node.children, function(c){
+                            if (c && c.kind === kindUL && c.text) code += c.text + "\n";
+                        });
+
+                        // --- 永続化先の決定：祖先の params → H1 の params → globalScope ---
+                        function findParamOwner(n){
+                            for (var p = n; p; p = p.parent) { if (p && p.params) return p; }
+                            return null;
+                        }
+                        var owner = findParamOwner(node);
+                        if (!owner) {
+                            // シート（H1）ノードを探す
+                            var sheet = FindParentNode(node, function(n){ return n && n.kind === "H" && n.level === 1; });
+                            if (sheet) { sheet.params = sheet.params || {}; owner = sheet; }
+                        }
+                        var persistTarget = owner ? owner.params : globalScope;
+
+                        // 実行前の own property をスナップショット
+                        var before = {};
+                        for (var k in localScope) if (Object.prototype.hasOwnProperty.call(localScope, k)) {
+                            before[k] = localScope[k];
+                        }
+
+                        try {
+                            installInitHelpers(localScope);   // $get/$set/$defaults
+                            execInScope(code, localScope);    // with(scope){ ... }
+
+                            // 実行後、新規/変更された own prop を永続層へコピー
+                            for (var key in localScope) {
+                                if (!Object.prototype.hasOwnProperty.call(localScope, key)) continue;
+                                if (key.charAt(0) === "$") continue;           // ヘルパは無視
+                                if (typeof localScope[key] === "function") continue;
+                                var isNew = !(key in before);
+                                var changed = !isNew ? (before[key] !== localScope[key]) : true;
+                                if (isNew || changed) { persistTarget[key] = localScope[key]; }
+                            }
+                        } catch(e) {
+                            var msg = "init 実行エラー:\n" + e.message;
+                            var lo  = node.lineObj;
+                            if (lo) MyError(msg, lo.filePath, lo.lineNum); else MyError(msg);
+                        } finally {
+                            delete localScope.$get; delete localScope.$set; delete localScope.$defaults;
+                        }
+                        // 実行済みの @init ノードは除去
+                        if (parent) parent.children[index] = null;
+                    }
+                }
+            },
+            function(){ scopeStack.pop(); }
+        );
+        // children の null を掃除
+        shrinkChildrenArray(root, null, -1);
+    }
+
     function installInitHelpers(scope) {
         scope.$get = function(k){ return (k in scope) ? scope[k] : void 0; };
         scope.$set = function(k,v){ scope[k] = v; };
@@ -2622,7 +2697,7 @@ var globalScope = (function(original) {
     // すべての展開・置換が終わった最後に呼ぶ
     function dropInitNodesEverywhere(root) {
         forAllNodes_Recurse(root, null, -1, function(n, p, i) {
-            if (!n || n.kind !== "UL") return;
+            if (!n || n.kind !== kindUL) return;
             var t = (n.text || "").trim();
             if (/^@init(?:\s*:|$)/.test(t)) {
                 p.children[i] = null;
@@ -2641,23 +2716,24 @@ var globalScope = (function(original) {
     // 3) null を除去して一次整形
     shrinkChildrenArrayForAllNodes();
 
-    // （任意）テンプレ外ノードにも {{...}} を適用するプリパス
-    // まずは動作確認のため、必要時にだけ手動で呼んでください
+    // 3.5) テンプレート外 @init を実行（placeholders 置換の前に）
+    runInitDirectivesGlobally(root);
+    // 4) テンプレ外の {{...}} を適用するプリパス
     applyPlaceholdersEverywhere();
 
     // （必要に応じてテンプレ宣言内部の参照検証）
     // ※元コードでは全テンプレ事前展開/検証はコメントアウトされていたため、呼び出しは保持しません。
     //    verifyTemplateReference(...) を使いたい場合は、parent.templates を走査して適宜呼び出してください。
 
-    // 4) ルートから *template(...) 呼び出しを順次インライン展開
+    // 5) ルートから *template(...) 呼び出しを順次インライン展開
     expandAllTemplateCalls();
 
     dropInitNodesEverywhere(root);
 
-    // 5) 再度 null 洗浄
+    // 6) 再度 null 洗浄
     shrinkChildrenArrayForAllNodes();
 
-    // 6) leaf じゃなくなった node の id を削除
+    // 7) leaf じゃなくなった node の id を削除
     forAllNodes_Recurse(root, null, -1, function(node, parent, index) {
         if (node.kind !== kindUL) {
             return;
