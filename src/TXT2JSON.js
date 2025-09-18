@@ -1852,11 +1852,14 @@ function evalPlaceholderToken(raw, scope/*, node*/) {
         }
     }
 
-    // 明示の ?（または互換の裸）で falsy → 行削除
+    // 明示の ? : 条件ガード + 簡易プレースホルダ
+    // - falsy(false/null/undefined / ※Q_BOOL_STRICTなら厳格) → ノードごと削除
+    // - truthy のとき true は空文字、それ以外は通常の文字列化で出力
     if (mode === "dropOnFalsy") {
+        var dropQ = isDropByQ(val);
         return {
-            drop: isDropByQ(val),
-            text: isDropByQ(val) ? "" : String(val)
+            drop: dropQ,
+            text: dropQ ? "" : (val === true ? "" : String(val))
         };
     }
 
