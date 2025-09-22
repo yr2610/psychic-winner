@@ -110,6 +110,74 @@ function stringifyPretty(obj, indent) {
     return JSON.stringify(obj, JSON_REPLACER, indent);
 }
 
+// ==== 継続吸収（行末 " +" とハンギング） ====
+// reader: srcLines の reader（.read() で { line }、.index/.atEnd を持つ）
+// text:   すでに読んだ項目の本文（1行目）
+// baseline: この項目の“本文が始まる桁”より右なら継続とみなす（UL: indent+2, OL: leading+2）
+// options: { trimLeft: true, structuralGuard: true }
+function absorbContinuations(reader, text, baseline, options) {
+    options = options || {};
+    var trimLeft = options.trimLeft !== false;
+    var useGuard = options.structuralGuard !== false;
+
+    function unreadOne() {
+        if (reader.index > 0) {
+            reader.index--; reader.atEnd = false;
+        }
+    }
+
+    function leadingSpaces(s) {
+        var m = String(s).match(/^\s*/);
+        return m ? m[0].length : 0;
+    }
+
+    function isStructuralStart(s) {
+        if (!useGuard) return false;
+        var t = String(s).trim();
+        return /^#{1,6}\s+/.test(t)      // 見出し
+            || /^\s*[\*\+\-]\s+/.test(s) // UL
+            || /^\s*\d+\.\s+/.test(s)    // OL
+            || /^&[A-Za-z_]\w*\s*\(/.test(t) // &Name( 宣言
+            || /^\*[A-Za-z_]\w*\s*\(/.test(t) // *Call(
+            || /^@(?:init|set)\b/.test(t);    // ディレクティブ
+    }
+
+    // 1) 既存の " +" 継続をすべて取り込む
+    while (/.*\s\+\s*$/.test(text)) {
+        var nxt = reader.read();
+        var cont = nxt ? nxt.line : "";
+        // 末尾の " +" を落として改行＋次行を連結
+        text = _.trimRight(_.trimRight(text).slice(0, -1));
+        text += "\n" + (trimLeft ? _.trimLeft(cont) : cont);
+    }
+
+    // 2) ハンギング継続（本文より右で始まる行を連結、空行は許容）
+    while (!reader.atEnd) {
+        var pos = reader.index;
+        var rec = reader.read();
+        var s = rec ? rec.line : "";
+
+        if (isStructuralStart(s)) {
+            unreadOne();
+            break;
+        }
+
+        var ls = leadingSpaces(s);
+        if (s.trim().length === 0 || ls >= baseline) {
+            text += "\n" + (trimLeft ? _.trimLeft(s) : s);
+            // NOTE: 続行して次の行も見る
+            continue;
+        }
+
+        // 兄弟/上位開始なので 1 行戻して終了
+        unreadOne();
+        break;
+    }
+
+    return text;
+}
+
+
 var shell = new ActiveXObject("WScript.Shell");
 var shellApplication = new ActiveXObject("Shell.Application");
 var fso = new ActiveXObject("Scripting.FileSystemObject");
@@ -670,13 +738,8 @@ function parseHeading(lineObj) {
         tableHeaders = [];
     }
     else {
-        while (/.*\s\+\s*$/.test(text)) {
-            // 改行の次の行の行頭のスペースは無視するように
-            // 厳密にはインデントが揃ってるかちゃんとみるべきだけど、そこまでやるつもりはない
-            line = _.trimLeft(srcLines.read().line);
-            text = _.trimRight(_.trimRight(text).slice(0, -1));
-            text += "\n" + line;
-        }
+        var baseline = indent + 2; // 記号＋スペースぶん
+        text = absorbContinuations(srcLines, text, baseline, { trimLeft: true, structuralGuard: true });
 
         // １行のみ、行全体以外は対応しない
         var link = text.trim().match(/^\[(.+)\]\((.+)\)$/);
@@ -946,14 +1009,12 @@ function parseUnorderedList(lineObj) {
         });
     })();
 
-
-    while (/.*\s\+\s*$/.test(text)) {
-        // 改行の次の行の行頭のスペースは無視するように
-        // 厳密にはインデントが揃ってるかちゃんとみるべきだけど、そこまでやるつもりはない
-        line = _.trimLeft(srcLines.read().line);
-        text = _.trimRight(_.trimRight(text).slice(0, -1));
-        text += "\n" + line;
-    }
+    var leading = (function(s) {
+        var m = String(s).match(/^\s*/);
+        return m ? m[0].length : 0;
+    })(line);
+    var baseline = leading + 2; // "n. " の見た目の最低値でOK
+    text = absorbContinuations(srcLines, text, baseline, { trimLeft: true, structuralGuard: true });
 
     var commentResult = parseComment(text, lineObj);
     var comment;
@@ -1133,13 +1194,14 @@ while (!srcLines.atEnd) {
             var text = ol[2];
             var parent = stack.peek();
 
-            while (/.*\s\+\s*$/.test(text)) {
-                // 改行の次の行の行頭のスペースは無視するように
-                // 厳密にはインデントが揃ってるかちゃんとみるべきだけど、そこまでやるつもりはない
-                line = _.trimLeft(srcLines.read().line);
-                text = _.trimRight(_.trimRight(text).slice(0, -1));
-                text += "\n" + line;
-            }
+            // baseline は「その行の本文先頭の桁」。
+            // プレーン行なら先頭空白数 + 1 くらいでも可（必要なら厳密化）。
+            var leading = (function(s) {
+                var m = String(s).match(/^\s*/);
+                return m ? m[0].length : 0;
+            })(line);
+            var baseline = leading + 1;
+            text = absorbContinuations(srcLines, text, baseline, { trimLeft: true, structuralGuard: true });
 
             if (parent.kind === kindH && parent.level === 1) {
                 var comment = undefined;
