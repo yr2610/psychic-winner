@@ -110,19 +110,21 @@ function stringifyPretty(obj, indent) {
     return JSON.stringify(obj, JSON_REPLACER, indent);
 }
 
-// ==== 継続吸収（行末 " +" とハンギング） ====
-// reader: srcLines の reader（.read() で { line }、.index/.atEnd を持つ）
-// text:   すでに読んだ項目の本文（1行目）
-// baseline: この項目の“本文が始まる桁”より右なら継続とみなす（UL: indent+2, OL: leading+2）
-// options: { trimLeft: true, structuralGuard: true }
+// ==== 継続吸収（" +" とハンギング）====
+// reader: srcLines の reader
+// text:   先頭行の本文
+// baseline: 本文開始より右なら継続（UL: indent+2, OL: leading+2）
+// options: { trimLeft: true, structuralGuard: true, stripRight: true }
 function absorbContinuations(reader, text, baseline, options) {
     options = options || {};
     var trimLeft = options.trimLeft !== false;
     var useGuard = options.structuralGuard !== false;
+    var stripRight = options.stripRight !== false;
 
     function unreadOne() {
         if (reader.index > 0) {
-            reader.index--; reader.atEnd = false;
+            reader.index--;
+            reader.atEnd = false;
         }
     }
 
@@ -142,36 +144,88 @@ function absorbContinuations(reader, text, baseline, options) {
             || /^@(?:init|set)\b/.test(t);    // ディレクティブ
     }
 
-    // 1) 既存の " +" 継続をすべて取り込む
-    while (/.*\s\+\s*$/.test(text)) {
-        var nxt = reader.read();
-        var cont = nxt ? nxt.line : "";
-        // 末尾の " +" を落として改行＋次行を連結
-        text = _.trimRight(_.trimRight(text).slice(0, -1));
-        text += "\n" + (trimLeft ? _.trimLeft(cont) : cont);
+    // ---- 1) 既存の " +" 明示継続 ----
+    var usedPlus = false;
+    // 先頭行が " +" で継続指定されているかを検出
+    if (/[ \t]+\+[ \t]*$/.test(text)) {
+        usedPlus = true;
+
+        // 末尾の " +" を落とす（改行は触らない）
+        text = text.replace(/[ \t]+\+[ \t]*$/, "");
+
+        // 以降は “プラス継続モード” で後続行を吸収する
+        var modePlus = true;
+        while (modePlus && !reader.atEnd) {
+            var rec = reader.read();
+            var raw = rec ? rec.line : "";
+            var trimmed = String(raw).trim();
+
+            // 1-a) 空行マーカー: 「+」のみ（前後に半角スペース可）
+            //     → 空行を 1 行挿入し、継続は継続（次の行も読む）
+            //     （オプション化したい場合は options.plusBlankMarker !== false 等で分岐）
+            if (trimmed === "+") {
+                if (stripRight) {
+                    text = text.replace(/[ \t]+$/, ""); // 直前行の末尾空白だけ除去
+                }
+                text += "\n"; // 空行を挿入
+                modePlus = true;
+                continue;
+            }
+
+            // 1-b) 本当の空行（空白のみ or 完全な空行）は“継続終了”
+            //     → 空行は消費しない（元仕様どおり）。必要ならここで append しても良い。
+            if (trimmed.length === 0) {
+                unreadOne();
+                break;
+            }
+
+            // 1-c) 通常の継続行：その行自身が " +" で終わるなら更に継続
+            var hasPlus = /[ \t]+\+[ \t]*$/.test(raw);
+            var content = hasPlus ? raw.replace(/[ \t]+\+[ \t]*$/, "") : raw;
+
+            var piece = trimLeft ? _.trimLeft(content) : content;
+            if (stripRight) {
+                piece = piece.replace(/[ \t]+$/, "");
+            }
+
+            text += "\n" + piece;
+            modePlus = hasPlus; // この行が " +" で終わっていれば、次も読む
+        }
     }
 
-    // 2) ハンギング継続（本文より右で始まる行を連結、空行は許容）
-    while (!reader.atEnd) {
-        var pos = reader.index;
-        var rec = reader.read();
-        var s = rec ? rec.line : "";
+    // ---- 2) ハンギング継続（" +" を使っていない項目のみ許可）----
+    if (!usedPlus) {
+        while (!reader.atEnd) {
+            var rec = reader.read();
+            var s = rec ? rec.line : "";
 
-        if (isStructuralStart(s)) {
+            if (isStructuralStart(s)) {
+                unreadOne();
+                break;
+            }
+
+            var ls = leadingSpaces(s);
+            if (s.trim().length === 0 || ls >= baseline) {
+                var seg = trimLeft ? _.trimLeft(s) : s;
+                if (stripRight) {
+                    seg = seg.replace(/[ \t]+$/, "");
+                }
+                // 直前行の末尾空白だけ削る（改行は保持＝空行は維持）
+                if (stripRight) {
+                    text = text.replace(/[ \t]+$/, "");
+                }
+                text += "\n" + seg;
+                continue;
+            }
+
             unreadOne();
             break;
         }
+    }
 
-        var ls = leadingSpaces(s);
-        if (s.trim().length === 0 || ls >= baseline) {
-            text += "\n" + (trimLeft ? _.trimLeft(s) : s);
-            // NOTE: 続行して次の行も見る
-            continue;
-        }
-
-        // 兄弟/上位開始なので 1 行戻して終了
-        unreadOne();
-        break;
+    // ---- 3) 念のため：全行の行末スペースのみ掃除（改行は保持）----
+    if (stripRight) {
+        text = text.replace(/[ \t]+(\r?\n)/g, "$1").replace(/[ \t]+$/, "");
     }
 
     return text;
