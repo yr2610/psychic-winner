@@ -2482,76 +2482,80 @@ var globalScope = (function(original) {
     }
 
     // ----- @init をテンプレート外でも実行する -----
-    function runInitDirectivesGlobally(root){
-        // 共有ベース：未定義なら一度だけ {} を割り当てて以後共有
+    function runInitDirectivesGlobally(root) {
         if (typeof globalScope === "undefined") { globalScope = {}; }
         var scopeStack = [ globalScope ];
+
         forAllNodes_Recurse(
             root, null, -1,
-            function(node, parent, index){
+            function (node, parent, index) {
                 if (!node) return true;
+
                 var parentScope = scopeStack[scopeStack.length - 1];
                 var localScope = parentScope;
                 if (node.params) localScope = extendScope(localScope, node.params);
                 scopeStack.push(localScope);
 
-                // UL の @init[: コード] を検出
+                // UL の 「@init: <code>」のみ対応（コロン必須 / 子ULは読まない）
                 if (node.kind === kindUL) {
                     var t = (node.text || "").trim();
-                    var m = t.match(/^@init(?:\s*:\s*(.*))?$/);
+                    var m = t.match(/^@init\s*:\s*([\s\S]*)$/);
                     if (m) {
-                        var code = "";
-                        if (m[1]) code += m[1] + "\n";
-                        _.forEach(node.children, function(c){
-                            if (c && c.kind === kindUL && c.text) code += c.text + "\n";
-                        });
+                        var code = m[1] || "";
 
-                        // --- 永続化先の決定：祖先の params → H1 の params → globalScope ---
-                        function findParamOwner(n){
+                        // --- 永続化先を決定：祖先 params → H1 params → globalScope
+                        function findParamOwner(n) {
                             for (var p = n; p; p = p.parent) { if (p && p.params) return p; }
                             return null;
                         }
                         var owner = findParamOwner(node);
                         if (!owner) {
-                            // シート（H1）ノードを探す
-                            var sheet = FindParentNode(node, function(n){ return n && n.kind === "H" && n.level === 1; });
+                            var sheet = FindParentNode(node, function (n) { return n && n.kind === "H" && n.level === 1; });
                             if (sheet) { sheet.params = sheet.params || {}; owner = sheet; }
                         }
                         var persistTarget = owner ? owner.params : globalScope;
 
-                        // 実行前の own property をスナップショット
+                        // 実行前スナップショット（own props のみ）
                         var before = {};
-                        for (var k in localScope) if (Object.prototype.hasOwnProperty.call(localScope, k)) {
-                            before[k] = localScope[k];
+                        for (var k in localScope) {
+                            if (Object.prototype.hasOwnProperty.call(localScope, k)) {
+                                before[k] = localScope[k];
+                            }
                         }
 
                         try {
                             installInitHelpers(localScope);   // $get/$set/$defaults
                             execInScope(code, localScope);    // with(scope){ ... }
 
-                            // 実行後、新規/変更された own prop を永続層へコピー
+                            // 新規/変更されたキーだけ永続層へコピー（$* と関数は除外）
                             for (var key in localScope) {
                                 if (!Object.prototype.hasOwnProperty.call(localScope, key)) continue;
-                                if (key.charAt(0) === "$") continue;           // ヘルパは無視
+                                if (key.charAt(0) === "$") continue;
                                 if (typeof localScope[key] === "function") continue;
+
                                 var isNew = !(key in before);
-                                var changed = !isNew ? (before[key] !== localScope[key]) : true;
-                                if (isNew || changed) { persistTarget[key] = localScope[key]; }
+                                var changed = isNew ? true : (before[key] !== localScope[key]);
+                                if (isNew || changed) {
+                                    persistTarget[key] = localScope[key];
+                                }
                             }
-                        } catch(e) {
-                            var msg = "init 実行エラー:\n" + e.message;
-                            var lo  = node.lineObj;
+                        } catch (e) {
+                            // 細かいエラーは出しすぎない方針なので簡素化
+                            var lo = node.lineObj;
+                            var msg = "init 実行エラー: " + e.message;
                             if (lo) MyError(msg, lo.filePath, lo.lineNum); else MyError(msg);
                         } finally {
                             delete localScope.$get; delete localScope.$set; delete localScope.$defaults;
                         }
-                        // 実行済みの @init ノードは除去
+
+                        // 実行済みの @init 行は除去
                         if (parent) parent.children[index] = null;
                     }
                 }
             },
-            function(){ scopeStack.pop(); }
+            function () { scopeStack.pop(); }
         );
+
         // children の null を掃除
         shrinkChildrenArray(root, null, -1);
     }
@@ -2570,14 +2574,11 @@ var globalScope = (function(original) {
         for (var i = 0; i < tplRoot.children.length; i++) {
             var n = tplRoot.children[i];
             if (!n || n.kind !== kindUL) continue;
-            var m = (n.text || "").trim().match(/^@init(?:\s*:\s*(.*))?$/);
+
+            var m = (n.text || "").trim().match(/^@init\s*:\s*([\s\S]*)$/);
             if (!m) continue;
 
-            var code = "";
-            if (m[1]) code += m[1] + "\n";
-            _.forEach(n.children, function(c){
-                if (c && c.kind === kindUL && c.text) code += c.text + "\n";
-            });
+            var code = m[1] || "";
 
             try {
                 installInitHelpers(scope);
@@ -2587,6 +2588,7 @@ var globalScope = (function(original) {
             } finally {
                 delete scope.$get; delete scope.$set; delete scope.$defaults;
             }
+
             tplRoot.children[i] = null; // 指令ノードは消す
             changed = true;
         }
@@ -2818,7 +2820,7 @@ var globalScope = (function(original) {
         forAllNodes_Recurse(root, null, -1, function(n, p, i) {
             if (!n || n.kind !== kindUL) return;
             var t = (n.text || "").trim();
-            if (/^@init(?:\s*:|$)/.test(t)) {
+            if (/^@init\s*:/.test(t)) {
                 p.children[i] = null;
             }
         });
