@@ -2285,7 +2285,6 @@ var globalScope = (function(original) {
                     }
                     if (parent !== null) {
                         parent.children[index] = null;
-                        delete node;
                     }
                     return;
                 }
