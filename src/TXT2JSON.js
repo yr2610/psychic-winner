@@ -141,7 +141,7 @@ function absorbContinuations(reader, text, baseline, options) {
             || /^\s*\d+\.\s+/.test(s)    // OL
             || /^&[A-Za-z_]\w*\s*\(/.test(t) // &Name( 宣言
             || /^\*[A-Za-z_]\w*\s*\(/.test(t) // *Call(
-            || /^@(?:init|set)\b/.test(t);    // ディレクティブ
+            || /^@[A-Za-z_]\w*:/.test(t);    // ディレクティブ（@xxx:）
     }
 
     // ---- 1) 既存の " +" 明示継続 ----
@@ -1673,9 +1673,12 @@ _.forEach(noIdNodes, function(infos) {
         }
 
         // leaf ノード
-        // ただし '[', ']' は除外
+        // ただし次の2種は除外
+        // 1) &Name: 宣言（アンカー定義） …… 例: &foo:
+        // 2) ディレクティブ @xxx:         …… 例: @init:, @set: など将来拡張含む
         if (element.node.children.length === 0) {
-            return (element.node.text !== '[' && element.node.text !== ']');
+            var t = element.node.text;
+            return !/^(?:&[A-Za-z_]\w*:|@[A-Za-z_]\w*:)/.test(t);
         }
 
         // テンプレート参照ノード
