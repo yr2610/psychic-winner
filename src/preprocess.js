@@ -3,16 +3,18 @@
 
     _.forEach(srclines, function(lineObj) {
         var line = lineObj.line;
-        var cppCommentIndex = line.search(/\s*\/\//);
 
-        if (cppCommentIndex != -1) {
-            if (cppCommentIndex == 0) {
-                return;
-            }
-            // 行末のコメント
-            lineObj.comment = line.slice(cppCommentIndex);
-            line = line.slice(0, cppCommentIndex);
-            lineObj.line = line;
+        // 1) 空白 + // だけの行は完全に破棄
+        if (/^\s*\/\//.test(line)) {
+            return;
+        }
+
+        // 2) 行中コメントは「空白に続く //」だけを対象
+        //    先頭の空白も含めて保存するため、\s+ の先頭位置を取得
+        var cppCommentIndex = line.search(/\s+\/\//);
+        if (cppCommentIndex !== -1) {
+            lineObj.comment = line.slice(cppCommentIndex);   // 例: " // note" / "\t// note"
+            lineObj.line = line.slice(0, cppCommentIndex);   // 本体側からは空白ごと切り落とし
         }
 
         lines.push(lineObj);
