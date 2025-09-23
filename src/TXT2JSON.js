@@ -2484,6 +2484,94 @@ var globalScope = (function(original) {
         return fn(scope);
     }
 
+    function parseConstLiteral(src) {
+        var t = String(src).trim();
+
+        // boolean / null
+        if (t === "true") return true;
+        if (t === "false") return false;
+        if (t === "null") return null;
+
+        // number (int/float/scientific)
+        if (/^-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(t)) return Number(t);
+
+        // quoted string
+        if (/^"(?:\\.|[^"\\])*"$/.test(t)) return JSON.parse(t);
+        if (/^'(?:\\.|[^'\\])*'$/.test(t)) {
+            var q = "\"" + t.slice(1, -1)
+                .replace(/\\'/g, "'")
+                .replace(/\\/g, "\\\\")
+                .replace(/"/g, "\\\"") + "\"";
+            return JSON.parse(q);
+        }
+
+        // fallback: unquoted string (YAML っぽく無引用を許可)
+        // ※ 先頭末尾の空白は trim 済み。必要なら引用してください。
+        return t;
+    }
+
+    function runAnchorDeclarationsGlobally(root) {
+        forAllNodes_Recurse(root, null, -1, function(node, parent, index) {
+            if (!node || node.kind !== kindUL) return;
+
+            var t = node.text.trim();
+            var m = t.match(/^&([A-Za-z_]\w*):\s*([\s\S]*)$/);
+            if (!m) return;
+
+            // 子を持つ (&foo_array:) は既存の配列処理に委譲
+            if (node.children && node.children.length > 0) return;
+
+            var name = m[1];
+            var raw  = m[2];
+
+            // ★ もっとも近い祖先に params を作ってそこへ保存
+            var owner = node.parent;
+            while (owner && !owner.params) owner = owner.parent;
+            if (!owner) owner = parent || root;       // どこにも無ければ親→root に作る
+            owner.params = owner.params || {};
+            var target = owner.params;
+
+            try {
+                target[name] = parseConstLiteral(raw);
+            } catch (e) {
+                // 無言方針なら何もしない／必要なら最小限のログ
+            }
+
+            if (parent) parent.children[index] = null;  // 宣言ノードは削除
+        });
+
+        shrinkChildrenArray(root, null, -1);
+    }
+
+    function runAnchorDeclarations(tplRoot, scope) {
+        var removed = false;
+
+        forAllNodes_Recurse(
+            tplRoot, null, -1,
+            function (n, p, i) {
+                if (!n || n.kind !== kindUL) return;
+                // 子を持つ &foo_array: は既存の配列処理に委ねる（スキップ）
+                if (n.children && n.children.length > 0) return;
+
+                var m = n.text.match(/^&([A-Za-z_]\w*):\s*([\s\S]*)$/);
+                if (!m) return;
+
+                try {
+                    scope[m[1]] = parseConstLiteral(m[2]);
+                } catch (e) {
+                    // サイレント方針なら何もしない
+                }
+
+                if (p) {
+                    p.children[i] = null;
+                    removed = true;
+                }
+            }
+        );
+
+        if (removed) shrinkChildrenArray(tplRoot, null, -1);
+    }
+
     // ----- @init をテンプレート外でも実行する -----
     function runInitDirectivesGlobally(root) {
         if (typeof globalScope === "undefined") { globalScope = {}; }
@@ -2664,6 +2752,7 @@ var globalScope = (function(original) {
             var firstParam = _.find(_.keys(parameters), function(s) { return s.substr(0,1) != "$"; });
             if (!_.isUndefined(firstParam)) defaultParam = firstParam;
 
+            runAnchorDeclarations(templateRoot, parametersScopeTop);
             runInitDirectives(templateRoot, parametersScopeTop);
 
             // ★ テンプレツリー内でも params を積みながら置換
@@ -2841,6 +2930,7 @@ var globalScope = (function(original) {
     shrinkChildrenArrayForAllNodes();
 
     // 3.5) テンプレート外 @init を実行（placeholders 置換の前に）
+    runAnchorDeclarationsGlobally(root);
     runInitDirectivesGlobally(root);
     // 4) テンプレ外の {{...}} を適用するプリパス
     applyPlaceholdersEverywhere();
