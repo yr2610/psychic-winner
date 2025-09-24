@@ -111,125 +111,150 @@ function stringifyPretty(obj, indent) {
 }
 
 // ==== 継続吸収（" +" とハンギング）====
+var PLUS_CONTINUATION_RE = /[ \t]+\+[ \t]*$/;
+var TRAILING_WHITESPACE_RE = /[ \t]+$/;
+var TRAILING_WHITESPACE_WITH_NEWLINE_RE = /[ \t]+(\r?\n)/g;
+
+function stripTrailingWhitespace(text) {
+    return text.replace(TRAILING_WHITESPACE_RE, "");
+}
+
+function stripTrailingWhitespaceAcrossLines(text) {
+    return text
+        .replace(TRAILING_WHITESPACE_WITH_NEWLINE_RE, "$1")
+        .replace(TRAILING_WHITESPACE_RE, "");
+}
+
+function unreadOneRecord(reader) {
+    if (reader.index > 0) {
+        reader.index--;
+        reader.atEnd = false;
+    }
+}
+
+function countLeadingSpaces(s) {
+    var m = String(s).match(/^\s*/);
+    return m ? m[0].length : 0;
+}
+
+function isStructuralStartLine(useGuard, line) {
+    if (!useGuard) {
+        return false;
+    }
+    var original = String(line);
+    var trimmed = original.trim();
+    return /^#{1,6}\s+/.test(trimmed)      // 見出し
+        || /^\s*[\*\+\-]\s+/.test(original) // UL
+        || /^\s*\d+\.\s+/.test(original)    // OL
+        || /^&[A-Za-z_]\w*\s*\(/.test(trimmed) // &Name( 宣言
+        || /^\*[A-Za-z_]\w*\s*\(/.test(trimmed) // *Call(
+        || /^@[A-Za-z_]\w*:/.test(trimmed)    // ディレクティブ（@xxx:）
+        || /^\s*\[.+\]:\s+.+$/.test(original); // 属性宣言（[key]: value）
+}
+
+function createContinuationContext(reader, text, baseline, options) {
+    options = options || {};
+    return {
+        reader: reader,
+        text: text,
+        baseline: baseline,
+        trimLeft: options.trimLeft !== false,
+        useGuard: options.structuralGuard !== false,
+        stripRight: options.stripRight !== false
+    };
+}
+
+function absorbPlusContinuations(context) {
+    var text = context.text;
+    var usedPlus = false;
+
+    if (!PLUS_CONTINUATION_RE.test(text)) {
+        return usedPlus;
+    }
+
+    usedPlus = true;
+    text = text.replace(PLUS_CONTINUATION_RE, "");
+
+    var modePlus = true;
+    while (modePlus && !context.reader.atEnd) {
+        var rec = context.reader.read();
+        var raw = rec ? rec.line : "";
+        var trimmed = String(raw).trim();
+
+        if (trimmed === "+") {
+            if (context.stripRight) {
+                text = stripTrailingWhitespace(text);
+            }
+            text += "\n";
+            modePlus = true;
+            continue;
+        }
+
+        if (trimmed.length === 0) {
+            unreadOneRecord(context.reader);
+            break;
+        }
+
+        var hasPlus = PLUS_CONTINUATION_RE.test(raw);
+        var content = hasPlus ? raw.replace(PLUS_CONTINUATION_RE, "") : raw;
+
+        var piece = context.trimLeft ? _.trimLeft(content) : content;
+        if (context.stripRight) {
+            piece = stripTrailingWhitespace(piece);
+        }
+
+        text += "\n" + piece;
+        modePlus = hasPlus;
+    }
+
+    context.text = text;
+    return usedPlus;
+}
+
+function absorbHangingContinuations(context) {
+    while (!context.reader.atEnd) {
+        var rec = context.reader.read();
+        var line = rec ? rec.line : "";
+
+        if (isStructuralStartLine(context.useGuard, line)) {
+            unreadOneRecord(context.reader);
+            break;
+        }
+
+        var trimmed = String(line).trim();
+        var leading = countLeadingSpaces(line);
+        if (trimmed.length === 0 || leading >= context.baseline) {
+            var segment = context.trimLeft ? _.trimLeft(line) : line;
+            if (context.stripRight) {
+                segment = stripTrailingWhitespace(segment);
+                context.text = stripTrailingWhitespace(context.text);
+            }
+            context.text += "\n" + segment;
+            continue;
+        }
+
+        unreadOneRecord(context.reader);
+        break;
+    }
+}
+
 // reader: srcLines の reader
 // text:   先頭行の本文
 // baseline: 本文開始より右なら継続（UL: indent+2, OL: leading+2）
 // options: { trimLeft: true, structuralGuard: true, stripRight: true }
 function absorbContinuations(reader, text, baseline, options) {
-    options = options || {};
-    var trimLeft = options.trimLeft !== false;
-    var useGuard = options.structuralGuard !== false;
-    var stripRight = options.stripRight !== false;
+    var context = createContinuationContext(reader, text, baseline, options);
+    var usedPlus = absorbPlusContinuations(context);
 
-    function unreadOne() {
-        if (reader.index > 0) {
-            reader.index--;
-            reader.atEnd = false;
-        }
-    }
-
-    function leadingSpaces(s) {
-        var m = String(s).match(/^\s*/);
-        return m ? m[0].length : 0;
-    }
-
-    function isStructuralStart(s) {
-        if (!useGuard) return false;
-        var t = String(s).trim();
-        return /^#{1,6}\s+/.test(t)      // 見出し
-            || /^\s*[\*\+\-]\s+/.test(s) // UL
-            || /^\s*\d+\.\s+/.test(s)    // OL
-            || /^&[A-Za-z_]\w*\s*\(/.test(t) // &Name( 宣言
-            || /^\*[A-Za-z_]\w*\s*\(/.test(t) // *Call(
-            || /^@[A-Za-z_]\w*:/.test(t)    // ディレクティブ（@xxx:）
-            || /^\s*\[.+\]:\s+.+$/.test(s); // 属性宣言（[key]: value）
-    }
-
-    // ---- 1) 既存の " +" 明示継続 ----
-    var usedPlus = false;
-    // 先頭行が " +" で継続指定されているかを検出
-    if (/[ \t]+\+[ \t]*$/.test(text)) {
-        usedPlus = true;
-
-        // 末尾の " +" を落とす（改行は触らない）
-        text = text.replace(/[ \t]+\+[ \t]*$/, "");
-
-        // 以降は “プラス継続モード” で後続行を吸収する
-        var modePlus = true;
-        while (modePlus && !reader.atEnd) {
-            var rec = reader.read();
-            var raw = rec ? rec.line : "";
-            var trimmed = String(raw).trim();
-
-            // 1-a) 空行マーカー: 「+」のみ（前後に半角スペース可）
-            //     → 空行を 1 行挿入し、継続は継続（次の行も読む）
-            //     （オプション化したい場合は options.plusBlankMarker !== false 等で分岐）
-            if (trimmed === "+") {
-                if (stripRight) {
-                    text = text.replace(/[ \t]+$/, ""); // 直前行の末尾空白だけ除去
-                }
-                text += "\n"; // 空行を挿入
-                modePlus = true;
-                continue;
-            }
-
-            // 1-b) 本当の空行（空白のみ or 完全な空行）は“継続終了”
-            //     → 空行は消費しない（元仕様どおり）。必要ならここで append しても良い。
-            if (trimmed.length === 0) {
-                unreadOne();
-                break;
-            }
-
-            // 1-c) 通常の継続行：その行自身が " +" で終わるなら更に継続
-            var hasPlus = /[ \t]+\+[ \t]*$/.test(raw);
-            var content = hasPlus ? raw.replace(/[ \t]+\+[ \t]*$/, "") : raw;
-
-            var piece = trimLeft ? _.trimLeft(content) : content;
-            if (stripRight) {
-                piece = piece.replace(/[ \t]+$/, "");
-            }
-
-            text += "\n" + piece;
-            modePlus = hasPlus; // この行が " +" で終わっていれば、次も読む
-        }
-    }
-
-    // ---- 2) ハンギング継続（" +" を使っていない項目のみ許可）----
     if (!usedPlus) {
-        while (!reader.atEnd) {
-            var rec = reader.read();
-            var s = rec ? rec.line : "";
-
-            if (isStructuralStart(s)) {
-                unreadOne();
-                break;
-            }
-
-            var ls = leadingSpaces(s);
-            if (s.trim().length === 0 || ls >= baseline) {
-                var seg = trimLeft ? _.trimLeft(s) : s;
-                if (stripRight) {
-                    seg = seg.replace(/[ \t]+$/, "");
-                }
-                // 直前行の末尾空白だけ削る（改行は保持＝空行は維持）
-                if (stripRight) {
-                    text = text.replace(/[ \t]+$/, "");
-                }
-                text += "\n" + seg;
-                continue;
-            }
-
-            unreadOne();
-            break;
-        }
+        absorbHangingContinuations(context);
     }
 
-    // ---- 3) 念のため：全行の行末スペースのみ掃除（改行は保持）----
-    if (stripRight) {
-        text = text.replace(/[ \t]+(\r?\n)/g, "$1").replace(/[ \t]+$/, "");
+    if (context.stripRight) {
+        context.text = stripTrailingWhitespaceAcrossLines(context.text);
     }
 
-    return text;
+    return context.text;
 }
 
 
