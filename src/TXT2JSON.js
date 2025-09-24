@@ -110,6 +110,33 @@ function stringifyPretty(obj, indent) {
     return JSON.stringify(obj, JSON_REPLACER, indent);
 }
 
+function countLeadingSpaces(s) {
+    var match = String(s).match(/^\s*/);
+    return match ? match[0].length : 0;
+}
+
+function stripTrailingSpaces(text) {
+    return text.replace(/[ \t]+$/, "");
+}
+
+function appendLineComment(text, lineObj) {
+    if (!_.isUndefined(lineObj.comment)) {
+        text += lineObj.comment;
+    }
+    return text;
+}
+
+function buildProjectKey(projectDirectory, filePath) {
+    return projectDirectory + ":" + filePath;
+}
+
+function ensureMapEntry(store, key, initializer) {
+    if (!(key in store)) {
+        store[key] = initializer();
+    }
+    return store[key];
+}
+
 // ==== 継続吸収（" +" とハンギング）====
 // reader: srcLines の reader
 // text:   先頭行の本文
@@ -126,11 +153,6 @@ function absorbContinuations(reader, text, baseline, options) {
             reader.index--;
             reader.atEnd = false;
         }
-    }
-
-    function leadingSpaces(s) {
-        var m = String(s).match(/^\s*/);
-        return m ? m[0].length : 0;
     }
 
     function isStructuralStart(s) {
@@ -166,7 +188,7 @@ function absorbContinuations(reader, text, baseline, options) {
             //     （オプション化したい場合は options.plusBlankMarker !== false 等で分岐）
             if (trimmed === "+") {
                 if (stripRight) {
-                    text = text.replace(/[ \t]+$/, ""); // 直前行の末尾空白だけ除去
+                    text = stripTrailingSpaces(text); // 直前行の末尾空白だけ除去
                 }
                 text += "\n"; // 空行を挿入
                 modePlus = true;
@@ -186,7 +208,7 @@ function absorbContinuations(reader, text, baseline, options) {
 
             var piece = trimLeft ? _.trimLeft(content) : content;
             if (stripRight) {
-                piece = piece.replace(/[ \t]+$/, "");
+                piece = stripTrailingSpaces(piece);
             }
 
             text += "\n" + piece;
@@ -205,15 +227,15 @@ function absorbContinuations(reader, text, baseline, options) {
                 break;
             }
 
-            var ls = leadingSpaces(s);
+            var ls = countLeadingSpaces(s);
             if (s.trim().length === 0 || ls >= baseline) {
                 var seg = trimLeft ? _.trimLeft(s) : s;
                 if (stripRight) {
-                    seg = seg.replace(/[ \t]+$/, "");
+                    seg = stripTrailingSpaces(seg);
                 }
                 // 直前行の末尾空白だけ削る（改行は保持＝空行は維持）
                 if (stripRight) {
-                    text = text.replace(/[ \t]+$/, "");
+                    text = stripTrailingSpaces(text);
                 }
                 text += "\n" + seg;
                 continue;
@@ -226,7 +248,7 @@ function absorbContinuations(reader, text, baseline, options) {
 
     // ---- 3) 念のため：全行の行末スペースのみ掃除（改行は保持）----
     if (stripRight) {
-        text = text.replace(/[ \t]+(\r?\n)/g, "$1").replace(/[ \t]+$/, "");
+        text = stripTrailingSpaces(text.replace(/[ \t]+(\r?\n)/g, "$1"));
     }
 
     return text;
@@ -585,11 +607,8 @@ var noIdNodes = {};
 function AddNoIdNode(node, lineObj, lineNum, newSrcText) {
     var filePath = lineObj.filePath;
     var projectDirectory = lineObj.projectDirectory;
-    var key = projectDirectory + ":" + filePath;
-
-    if (!(key in noIdNodes)) {
-        noIdNodes[key] = [];
-    }
+    var key = buildProjectKey(projectDirectory, filePath);
+    var list = ensureMapEntry(noIdNodes, key, function() { return []; });
 
     var data = {
         node: node,
@@ -604,7 +623,7 @@ function AddNoIdNode(node, lineObj, lineNum, newSrcText) {
         newSrcText: newSrcText
     };
 
-    noIdNodes[key].push(data);
+    list.push(data);
 }
 
 var srcTextsToRewrite = {};
@@ -614,18 +633,18 @@ function AddSrcTextToRewrite(noIdLineData, newSrcText) {
     var filePath = lineObj.filePath;
     var projectDirectory = lineObj.projectDirectory;
     //var filePathProjectLocal = getProjectLocalPath(filePath, projectDirectory);
-    var key = projectDirectory + ":" + filePath;
+    var key = buildProjectKey(projectDirectory, filePath);
     var lineNum = noIdLineData.lineNum;
 
-    if (!(key in srcTextsToRewrite)) {
-        srcTextsToRewrite[key] = {
+    var entry = ensureMapEntry(srcTextsToRewrite, key, function() {
+        return {
             filePath: filePath,
             projectDirectory: projectDirectory,
             newTexts: {}
         };
-    }
+    });
 
-    var newTexts = srcTextsToRewrite[key].newTexts;
+    var newTexts = entry.newTexts;
     newTexts[lineNum - 1] = newSrcText;
 }
 
@@ -862,9 +881,7 @@ function parseHeading(lineObj) {
         // ID 挿入して書き換え
         newSrcText = match[1] + " [#{uid}]" + match[2];
 
-        if (!_.isUndefined(lineObj.comment)) {
-            newSrcText += lineObj.comment;
-        }
+        newSrcText = appendLineComment(newSrcText, lineObj);
 
         AddNoIdNode(item, lineObj, lineObj.lineNum, newSrcText);
     }
@@ -872,7 +889,10 @@ function parseHeading(lineObj) {
     return h;
 }
 
-function parseUnorderedList(lineObj) {
+function parseUnorderedList(lineObj, line) {
+    if (typeof line === "undefined") {
+        line = lineObj.line;
+    }
     // 行頭に全角スペース、タブがないかのチェック
     (function () {
         var fullwidthSpaceMatch = line.match(/^([\s　]+).*$/);
@@ -1064,10 +1084,7 @@ function parseUnorderedList(lineObj) {
         });
     })();
 
-    var leading = (function(s) {
-        var m = String(s).match(/^\s*/);
-        return m ? m[0].length : 0;
-    })(line);
+    var leading = countLeadingSpaces(line);
     var baseline = leading + 2; // "n. " の見た目の最低値でOK
     text = absorbContinuations(srcLines, text, baseline, { trimLeft: true, structuralGuard: true });
 
@@ -1165,9 +1182,7 @@ function parseUnorderedList(lineObj) {
         // ID 挿入して書き換え
         newSrcText = match[1] + " [#{uid}]" + match[2];
 
-        if (!_.isUndefined(lineObj.comment)) {
-            newSrcText += lineObj.comment;
-        }
+        newSrcText = appendLineComment(newSrcText, lineObj);
 
         AddNoIdNode(item, lineObj, lineObj.lineNum, newSrcText);
     }
@@ -1184,7 +1199,7 @@ while (!srcLines.atEnd) {
         if (parseHeading(lineObj)) {
             continue;
         }
-        if (parseUnorderedList(lineObj)) {
+        if (parseUnorderedList(lineObj, line)) {
             continue;
         }
     }
@@ -1251,10 +1266,7 @@ while (!srcLines.atEnd) {
 
             // baseline は「その行の本文先頭の桁」。
             // プレーン行なら先頭空白数 + 1 くらいでも可（必要なら厳密化）。
-            var leading = (function(s) {
-                var m = String(s).match(/^\s*/);
-                return m ? m[0].length : 0;
-            })(line);
+            var leading = countLeadingSpaces(line);
             var baseline = leading + 1;
             text = absorbContinuations(srcLines, text, baseline, { trimLeft: true, structuralGuard: true });
 
