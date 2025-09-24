@@ -141,7 +141,8 @@ function absorbContinuations(reader, text, baseline, options) {
             || /^\s*\d+\.\s+/.test(s)    // OL
             || /^&[A-Za-z_]\w*\s*\(/.test(t) // &Name( 宣言
             || /^\*[A-Za-z_]\w*\s*\(/.test(t) // *Call(
-            || /^@[A-Za-z_]\w*:/.test(t);    // ディレクティブ（@xxx:）
+            || /^@[A-Za-z_]\w*:/.test(t)    // ディレクティブ（@xxx:）
+            || /^\s*\[.+\]:\s+.+$/.test(s); // 属性宣言（[key]: value）
     }
 
     // ---- 1) 既存の " +" 明示継続 ----
