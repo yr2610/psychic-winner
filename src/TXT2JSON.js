@@ -1917,6 +1917,72 @@ var PLACEHOLDER_WARN_ON_UNDEFINED = true;   // まずは警告だけ出す
 var PLACEHOLDER_LEGACY_DROP       = true;   // 互換: 裸 {{…}} は falsy で行削除
 var PLACEHOLDER_STRICT_DEFAULT    = false;  // 将来: 裸 {{…}} を“必須”寄りに
 var Q_BOOL_STRICT                 = false;  // {{?}} を bool 限定にするか
+var PLACEHOLDER_WARN_DIALOG_LIMIT = 3;      // ダイアログに表示する警告の上限
+var PLACEHOLDER_WARNINGS_FILENAME = "warnings.txt";
+
+var placeholderWarnings = [];
+
+function pushPlaceholderWarning(message, node) {
+    var entry = { message: message };
+    if (node && node.lineObj) {
+        var lineObj = node.lineObj;
+        var relativeFilePath = getRelativePath(lineObj.filePath, rootFilePath, fso);
+        entry.filePath = relativeFilePath || lineObj.filePath;
+        entry.lineNum = lineObj.lineNum;
+    }
+    placeholderWarnings.push(entry);
+}
+
+function formatPlaceholderWarning(entry) {
+    var message = entry.message;
+    if (entry.filePath) {
+        message += makeLineinfoString(entry.filePath, entry.lineNum);
+    }
+    return message;
+}
+
+function getPlaceholderWarningsFilePath() {
+    var outputDirectory = fso.GetParentFolderName(outfilePath);
+    return fso.BuildPath(outputDirectory, PLACEHOLDER_WARNINGS_FILENAME);
+}
+
+function clearPlaceholderWarningsFile() {
+    var warningsFilePath = getPlaceholderWarningsFilePath();
+    if (fso.FileExists(warningsFilePath)) {
+        try {
+            fso.DeleteFile(warningsFilePath);
+        } catch (e) {
+            // ignore failures (e.g. read-only file)
+        }
+    }
+}
+
+function finalizePlaceholderWarnings() {
+    if (placeholderWarnings.length === 0) {
+        clearPlaceholderWarningsFile();
+        return null;
+    }
+
+    var messages = _.map(placeholderWarnings, formatPlaceholderWarning);
+    var limit = PLACEHOLDER_WARN_DIALOG_LIMIT;
+    var shownMessages = messages.slice(0, limit);
+    var dialogParts = [];
+
+    dialogParts.push("警告（全" + placeholderWarnings.length + "件中" + shownMessages.length + "件を表示）");
+    dialogParts.push(shownMessages.join("\n\n"));
+
+    var moreCount = placeholderWarnings.length - shownMessages.length;
+    if (moreCount > 0) {
+        var warningsFilePath = getPlaceholderWarningsFilePath();
+        CL.writeTextFileUTF8(messages.join("\n\n") + "\n", warningsFilePath);
+        dialogParts.push("... ほか " + moreCount + " 件の警告があります。");
+        dialogParts.push("詳細は " + warningsFilePath + " を確認してください。");
+    } else {
+        clearPlaceholderWarningsFile();
+    }
+
+    return dialogParts.join("\n\n");
+}
 
 // 親スコープをプロトタイプ継承し、現在ノードのレイヤーを上書きで乗せる
 function extendScope(parentScope, layer) {
@@ -1997,6 +2063,12 @@ function evalPlaceholderToken(raw, scope/*, node*/) {
 
     if (mode === "legacy" && PLACEHOLDER_LEGACY_DROP) {
         var falsyLegacy = (val === false || val === void 0 || val === null);
+        if (falsyLegacy) {
+            pushPlaceholderWarning(
+                "Legacy プレースホルダ '{{" + s + "}}' の値が falsy（false/null/undefined）です。行を削除しました。必要な値であれば {{…!}} 形式を検討してください。",
+                node
+            );
+        }
         return {
             drop: falsyLegacy,
             text: falsyLegacy ? "" : (val === true ? "" : String(val))
@@ -2005,8 +2077,10 @@ function evalPlaceholderToken(raw, scope/*, node*/) {
 
     // 警告だけ
     if (PLACEHOLDER_WARN_ON_UNDEFINED && (val === void 0 || val === null)) {
-        // TODO: ロガーに差し替え
-        // warn("未定義プレースホルダ: " + s, node && node.lineObj);
+        pushPlaceholderWarning(
+            "プレースホルダ '{{" + s + "}}' の値が未定義(null/undefined)です。",
+            node
+        );
     }
 
     // true は空文字、null/undefined は空
@@ -3467,19 +3541,33 @@ var strUpdatedSrcFiles = (function () {
     return message;
 })();
 
+var placeholderWarningsMessage = finalizePlaceholderWarnings();
+
 if (!runInCScript) {
-    var message = "JSONファイル(" + outFilename + ")を出力しました";
+    var messageParts = ["JSONファイル(" + outFilename + ")を出力しました"];
 
     if (strUpdatedSrcFiles) {
-        message += "\n\n---\n\n" + strUpdatedSrcFiles;
+        messageParts.push(strUpdatedSrcFiles);
     }
-    
-    alert(message);
+    if (placeholderWarningsMessage) {
+        messageParts.push(placeholderWarningsMessage);
+    }
+
+    alert(messageParts.join("\n\n---\n\n"));
 }
 else {
-    // 更新ファイルだけは必ずダイアログで表示する
+    var cliMessageParts = [];
+
+    // CScript 実行時は更新情報と警告のみ通知する
     if (strUpdatedSrcFiles) {
-        alert(strUpdatedSrcFiles);
+        cliMessageParts.push(strUpdatedSrcFiles);
+    }
+    if (placeholderWarningsMessage) {
+        cliMessageParts.push(placeholderWarningsMessage);
+    }
+
+    if (cliMessageParts.length > 0) {
+        alert(cliMessageParts.join("\n\n---\n\n"));
     }
 }
 
