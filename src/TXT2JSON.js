@@ -2802,6 +2802,69 @@ var globalScope = (function(original) {
         if (changed) shrinkChildrenArray(tplRoot, null, -1);
     }
 
+    function expandInlineParamArray(targetNode, targetIndex, paramName, callSiteScope) {
+        var parent = targetNode.parent;
+        if (!parent) {
+            return;
+        }
+
+        if (targetNode.children && targetNode.children.length > 0) {
+            throw new TemplateError("'*" + paramName + "' と子要素は同時に使用できません。", targetNode);
+        }
+
+        var scopedValue = callSiteScope && callSiteScope[paramName];
+        if (_.isUndefined(scopedValue)) {
+            throw new TemplateError("データ'" + paramName + "'は存在しません。", targetNode);
+        }
+
+        var list = toRepeatList(scopedValue) || scopedValue;
+        if (!_.isArray(list)) {
+            throw new TemplateError("データ'" + paramName + "'は配列ではありません。", targetNode);
+        }
+
+        var baseId = targetNode.id;
+        var replacements = [];
+
+        _.forEach(list, function(element, index) {
+            var entry = element;
+            if (!_.isObject(entry)) {
+                entry = { $value: entry };
+            }
+
+            var value = entry.$value;
+            if (value === void 0 || value === null) {
+                value = "";
+            }
+
+            var suffix = entry.$id;
+            if (!suffix) {
+                suffix = "i" + index;
+            }
+
+            var newNode = _.assign({}, targetNode);
+            newNode.text = String(value);
+            delete newNode.comment;
+            delete newNode.imageFilePath;
+            delete newNode.tableData;
+            delete newNode.initialValues;
+            delete newNode.url;
+            newNode.variables = {};
+            delete newNode.params;
+            delete newNode.templates;
+            newNode.children = [];
+            newNode.id = baseId + "_" + suffix;
+            newNode.parent = parent;
+
+            replacements.push(newNode);
+        });
+
+        var siblings = parent.children;
+        siblings[targetIndex] = null;
+        var insertedChildren = siblings.slice(0, targetIndex + 1).concat(replacements).concat(siblings.slice(targetIndex + 1));
+        insertedChildren[targetIndex] = null;
+        parent.children = insertedChildren;
+    }
+
     // ===== Template Expansion =====
     // node に template の clone を追加する（展開前の状態で追加）
     function addTemplate(targetNode, targetIndex, templateName, parameters, callSiteScope) {
@@ -3000,7 +3063,21 @@ var globalScope = (function(original) {
                 if (node.params) localScope = extendScope(localScope, node.params);
                 scopeStack.push(localScope);
 
-                var match = node.text && node.text.trim().match(/^\*([A-Za-z_]\w*)\((.*)\)$/);
+                var trimmedText = node.text && node.text.trim();
+
+                var inlineArrayMatch = trimmedText && trimmedText.match(/^\*([A-Za-z_]\w*)(?:\s*:\s*)?$/);
+                if (inlineArrayMatch) {
+                    var paramName = inlineArrayMatch[1];
+                    try {
+                        expandInlineParamArray(node, index, paramName, localScope);
+                    } catch (e) {
+                        if (_.isUndefined(e.node) || _.isUndefined(e.errorMessage)) throw e;
+                        templateError(e.errorMessage, e.node);
+                    }
+                    return;
+                }
+
+                var match = trimmedText && trimmedText.match(/^\*([A-Za-z_]\w*)\((.*)\)$/);
                 if (match) {
                     var templateName = match[1];
                     var parameters;
