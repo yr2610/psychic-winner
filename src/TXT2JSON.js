@@ -2028,8 +2028,17 @@ function evalExprWithScope(expr, scope) {
 
 // [] の中は数値だけ許可（動的は式評価へフォールバックさせる）
 var SIMPLE_PATH_RE = /^[\w$]+(?:\.[\w$]+|\[\d+\])*$/;
+var SIMPLE_PATH_LITERAL_MAP = {
+    "true": true,
+    "false": false,
+    "null": null,
+    "undefined": void 0
+};
 function evaluateExprOrPath(expr, scope) {
     // 単純参照（変数/ドット/ブラケット）は _.get でOK（プロトタイプを辿れる）
+    if (SIMPLE_PATH_LITERAL_MAP.hasOwnProperty(expr)) {
+        return SIMPLE_PATH_LITERAL_MAP[expr];
+    }
     if (SIMPLE_PATH_RE.test(expr)) {
         return _.get(scope, expr, void 0);
     }
