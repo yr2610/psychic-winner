@@ -1994,7 +1994,7 @@ function finalizePlaceholderWarnings() {
         var warningsFilePath = getPlaceholderWarningsFilePath();
         var fileMessages = _.map(undefinedEntries, formatPlaceholderWarning);
         CL.writeTextFileUTF8(fileMessages.join("\n\n") + "\n", warningsFilePath);
-        dialogParts.push("未定義プレースホルダーの一覧を " + warningsFilePath + " に出力しました。");
+        dialogParts.push("未定義プレースホルダーの一覧を " + PLACEHOLDER_WARNINGS_FILENAME + " に出力しました。");
     } else {
         clearPlaceholderWarningsFile();
     }
