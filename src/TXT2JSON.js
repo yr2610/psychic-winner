@@ -1915,28 +1915,42 @@ CL.deletePropertyForAllNodes(root, "marker");
 
 var PLACEHOLDER_WARN_ON_UNDEFINED = true;   // まずは警告だけ出す
 var PLACEHOLDER_LEGACY_DROP       = true;   // 互換: 裸 {{…}} は falsy で行削除
-var PLACEHOLDER_STRICT_DEFAULT    = false;  // 将来: 裸 {{…}} を“必須”寄りに
+var PLACEHOLDER_UNDEFINED_IS_ERROR = false; // 将来: 未定義でエラーに切り替える
 var Q_BOOL_STRICT                 = false;  // {{?}} を bool 限定にするか
 var PLACEHOLDER_WARN_DIALOG_LIMIT = 3;      // ダイアログに表示する警告の上限
-var PLACEHOLDER_WARNINGS_FILENAME = "warnings.txt";
+var PLACEHOLDER_WARNINGS_FILENAME = "placeholder_warnings.txt";
 
 var placeholderWarnings = [];
 
-function pushPlaceholderWarning(message, node) {
-    var entry = { message: message };
+function pushPlaceholderWarning(entry, node) {
+    var stored = _.assign({}, entry);
     if (node && node.lineObj) {
         var lineObj = node.lineObj;
         var relativeFilePath = getRelativePath(lineObj.filePath, rootFilePath, fso);
-        entry.filePath = relativeFilePath || lineObj.filePath;
-        entry.lineNum = lineObj.lineNum;
+        stored.filePath = relativeFilePath || lineObj.filePath;
+        stored.lineNum = lineObj.lineNum;
     }
-    placeholderWarnings.push(entry);
+    placeholderWarnings.push(stored);
 }
 
 function formatPlaceholderWarning(entry) {
-    var message = entry.message;
-    if (entry.filePath) {
-        message += makeLineinfoString(entry.filePath, entry.lineNum);
+    var message;
+    if (entry.kind === "undefinedPlaceholder") {
+        message = [
+            "未定義プレースホルダー: " + entry.placeholder
+        ];
+        if (entry.filePath) {
+            message.push("ファイル: " + entry.filePath);
+        }
+        if (entry.lineNum) {
+            message.push("行: " + entry.lineNum);
+        }
+        message = message.join("\n");
+    } else {
+        message = entry.message || "";
+        if (entry.filePath) {
+            message += makeLineinfoString(entry.filePath, entry.lineNum);
+        }
     }
     return message;
 }
@@ -1972,13 +1986,21 @@ function finalizePlaceholderWarnings() {
     dialogParts.push(shownMessages.join("\n\n"));
 
     var moreCount = placeholderWarnings.length - shownMessages.length;
-    if (moreCount > 0) {
+    var undefinedEntries = _.filter(placeholderWarnings, function(entry) {
+        return entry.kind === "undefinedPlaceholder";
+    });
+
+    if (undefinedEntries.length > 0) {
         var warningsFilePath = getPlaceholderWarningsFilePath();
-        CL.writeTextFileUTF8(messages.join("\n\n") + "\n", warningsFilePath);
-        dialogParts.push("... ほか " + moreCount + " 件の警告があります。");
-        dialogParts.push("詳細は " + warningsFilePath + " を確認してください。");
+        var fileMessages = _.map(undefinedEntries, formatPlaceholderWarning);
+        CL.writeTextFileUTF8(fileMessages.join("\n\n") + "\n", warningsFilePath);
+        dialogParts.push("未定義プレースホルダーの一覧を " + warningsFilePath + " に出力しました。");
     } else {
         clearPlaceholderWarningsFile();
+    }
+
+    if (moreCount > 0) {
+        dialogParts.push("... ほか " + moreCount + " 件の警告があります。");
     }
 
     return dialogParts.join("\n\n");
@@ -2006,8 +2028,17 @@ function evalExprWithScope(expr, scope) {
 
 // [] の中は数値だけ許可（動的は式評価へフォールバックさせる）
 var SIMPLE_PATH_RE = /^[\w$]+(?:\.[\w$]+|\[\d+\])*$/;
+var SIMPLE_PATH_LITERAL_MAP = {
+    "true": true,
+    "false": false,
+    "null": null,
+    "undefined": void 0
+};
 function evaluateExprOrPath(expr, scope) {
     // 単純参照（変数/ドット/ブラケット）は _.get でOK（プロトタイプを辿れる）
+    if (SIMPLE_PATH_LITERAL_MAP.hasOwnProperty(expr)) {
+        return SIMPLE_PATH_LITERAL_MAP[expr];
+    }
     if (SIMPLE_PATH_RE.test(expr)) {
         return _.get(scope, expr, void 0);
     }
@@ -2028,27 +2059,31 @@ function isDropByQ(val) {
     return (val === false || val === null || val === void 0);
 }
 
+function handleUndefinedPlaceholder(placeholderName, node) {
+    if (PLACEHOLDER_UNDEFINED_IS_ERROR) {
+        throw new ParseError("未定義プレースホルダー: " + placeholderName, node && node.lineObj);
+    }
+    if (PLACEHOLDER_WARN_ON_UNDEFINED) {
+        pushPlaceholderWarning({
+            kind: "undefinedPlaceholder",
+            placeholder: placeholderName
+        }, node);
+    }
+}
+
 function evalPlaceholderToken(raw, scope, node) {
-    var s = (raw || "").trim();
+    var trimmedRaw = (raw || "").trim();
+    var s = trimmedRaw;
     var mode = "legacy";
     if (s.charAt(0) === "?") {
         mode = "dropOnFalsy";
         s = s.slice(1).trim();
     }
-    if (s.charAt(s.length-1) === "!") {
-        mode = "require";
-        s = s.slice(0, -1).trim();
+    if (s.charAt(s.length - 1) === "!") {
+        throw new ParseError("プレースホルダー '{{" + trimmedRaw + "}}' の '!' 指定は廃止されました。", node && node.lineObj);
     }
 
     var val = evaluateExprOrPath(s, scope);
-
-    // 必須（明示 ! または全体厳格）
-    if (mode === "require" || PLACEHOLDER_STRICT_DEFAULT) {
-        if (val === void 0 || val === null) {
-            // 必須未定義はエラー
-            throw new Error("必須プレースホルダ未定義: " + s);
-        }
-    }
 
     // 明示の ? : 条件ガード + 簡易プレースホルダ
     // - falsy(false/null/undefined / ※Q_BOOL_STRICTなら厳格) → ノードごと削除
@@ -2062,12 +2097,10 @@ function evalPlaceholderToken(raw, scope, node) {
     }
 
     if (mode === "legacy" && PLACEHOLDER_LEGACY_DROP) {
-        var falsyLegacy = (val === false || val === void 0 || val === null);
-        if (falsyLegacy) {
-            pushPlaceholderWarning(
-                "Legacy プレースホルダ '{{" + s + "}}' の値が falsy（false/null/undefined）です。行を削除しました。必要な値であれば {{…!}} 形式を検討してください。",
-                node
-            );
+        var legacyUndefined = (val === void 0 || val === null);
+        var falsyLegacy = (val === false || legacyUndefined);
+        if (legacyUndefined) {
+            handleUndefinedPlaceholder(s, node);
         }
         return {
             drop: falsyLegacy,
@@ -2076,11 +2109,8 @@ function evalPlaceholderToken(raw, scope, node) {
     }
 
     // 警告だけ
-    if (PLACEHOLDER_WARN_ON_UNDEFINED && (val === void 0 || val === null)) {
-        pushPlaceholderWarning(
-            "プレースホルダ '{{" + s + "}}' の値が未定義(null/undefined)です。",
-            node
-        );
+    if (val === void 0 || val === null) {
+        handleUndefinedPlaceholder(s, node);
     }
 
     // true は空文字、null/undefined は空
