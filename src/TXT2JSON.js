@@ -2028,7 +2028,7 @@ function isDropByQ(val) {
     return (val === false || val === null || val === void 0);
 }
 
-function evalPlaceholderToken(raw, scope/*, node*/) {
+function evalPlaceholderToken(raw, scope, node) {
     var s = (raw || "").trim();
     var mode = "legacy";
     if (s.charAt(0) === "?") {
