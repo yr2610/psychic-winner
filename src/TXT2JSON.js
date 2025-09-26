@@ -3065,7 +3065,7 @@ var globalScope = (function(original) {
 
                 var trimmedText = node.text && node.text.trim();
 
-                var inlineArrayMatch = trimmedText && trimmedText.match(/^\*([A-Za-z_]\w*)(?:\s*:\s*)?$/);
+                var inlineArrayMatch = trimmedText && trimmedText.match(/^\*([A-Za-z_]\w*)$/);
                 if (inlineArrayMatch) {
                     var paramName = inlineArrayMatch[1];
                     try {
