@@ -255,20 +255,38 @@ function absorbContinuations(reader, text, baseline, options) {
 }
 
 
-var shell = new ActiveXObject("WScript.Shell");
-var shellApplication = new ActiveXObject("Shell.Application");
-var fso = new ActiveXObject("Scripting.FileSystemObject");
-var stream = new ActiveXObject("ADODB.Stream");
+var shell = null;
+var shellApplication = null;
+var fso = null;
+var stream = null;
 var filePath = (WScript && WScript.Arguments && WScript.Arguments.length > 0)
   ? WScript.Arguments.Unnamed(0) : "";
 
 var conf = null;
 
-function setupEnvironment() {
-    if (!shell) shell = new ActiveXObject("WScript.Shell");
-    if (!shellApplication) shellApplication = new ActiveXObject("Shell.Application");
-    if (!fso) fso = new ActiveXObject("Scripting.FileSystemObject");
-    if (!stream) stream = new ActiveXObject("ADODB.Stream");
+function setupEnvironment(force) {
+    if (force || !shell) shell = new ActiveXObject("WScript.Shell");
+    if (force || !shellApplication) shellApplication = new ActiveXObject("Shell.Application");
+    if (force || !fso) fso = new ActiveXObject("Scripting.FileSystemObject");
+    if (force || !stream) stream = new ActiveXObject("ADODB.Stream");
+}
+
+function showPopup(message, secondsToWait, title, type) {
+    if (_.isUndefined(secondsToWait)) secondsToWait = 0;
+    if (_.isUndefined(title)) title = "";
+    if (_.isUndefined(type)) type = 0;
+
+    for (var attempt = 0; attempt < 2; attempt++) {
+        try {
+            setupEnvironment(attempt > 0);
+            return shell.Popup(message, secondsToWait, title, type);
+        } catch (err) {
+            shell = null;
+            if (attempt === 1) {
+                throw err;
+            }
+        }
+    }
 }
 
 function parseArgs() {
@@ -396,7 +414,7 @@ function MyError(message, filePath, lineNum) {
     if (runInCScript) {
         WScript.StdErr.Write(message);
     } else {
-        shell.Popup(message, 0, "エラー", ICON_EXCLA);
+        showPopup(message, 0, "エラー", ICON_EXCLA);
     }
     WScript.Quit(1);
 }
@@ -1866,7 +1884,7 @@ var srcTexts;   // XXX: root.id 用に保存しておく…
         // 5: ユーザーによるキャンセル        
         if (root.children.length == 0) {
             message += "更新が必要なシートはありません\nJSONファイルを出力しますか？";
-            var btnr = shell.Popup(message, 0, "確認", ICON_QUESTN|BTN_OK_CANCL);
+            var btnr = showPopup(message, 0, "確認", ICON_QUESTN|BTN_OK_CANCL);
             if (btnr == BTNR_CANCL) {
                 WScript.Quit(5);
             }
@@ -1882,7 +1900,7 @@ var srcTexts;   // XXX: root.id 用に保存しておく…
 
         message += formattedString;
 
-        var btnr = shell.Popup(message, 0, "シート作成・更新", BTN_OK_CANCL);
+        var btnr = showPopup(message, 0, "シート作成・更新", BTN_OK_CANCL);
         if (btnr == BTNR_CANCL) {
             WScript.Quit(5);
         }
