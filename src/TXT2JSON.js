@@ -2265,6 +2265,8 @@ var globalScope = (function(original) {
     }
 
     // ===== Parameter Evaluation =====
+    var templateParamFnCache = Object.create(null);
+
     function evalTemplateParameters(paramsStr, node, currentParameters) {
         paramsStr = paramsStr.trim();
         if (paramsStr == "") {
@@ -2301,11 +2303,20 @@ var globalScope = (function(original) {
                 keys.push(key);
                 values.push(value);
             });
-            keys.push("__paramsStr");
-            values.push(paramsStr);
-            var f = Function(keys.join(","), 'return eval("([" + __paramsStr + "])");');
+            var cacheKey = keys.join("\u0001") + "\u0002" + paramsStr;
 
-            return f.apply(null, values);
+            var fn = templateParamFnCache[cacheKey];
+            if (!fn) {
+                var fnArgs = keys.slice();
+                fnArgs.push("__paramsStr");
+                fn = Function(fnArgs.join(","), 'return eval("([" + __paramsStr + "])");');
+                templateParamFnCache[cacheKey] = fn;
+            }
+
+            var fnValues = values.slice();
+            fnValues.push(paramsStr);
+
+            return fn.apply(null, fnValues);
         }
 
         var paramsArray = parseParams(referableParams, paramsStr);
