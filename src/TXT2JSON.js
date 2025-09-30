@@ -1940,6 +1940,27 @@ var PLACEHOLDER_WARNINGS_FILENAME = "placeholder_warnings.txt";
 
 var placeholderWarnings = [];
 
+function isDuplicatePlaceholderWarning(existing, candidate) {
+    if (existing.kind !== candidate.kind) {
+        return false;
+    }
+
+    var existingFile = existing.filePath || "";
+    var candidateFile = candidate.filePath || "";
+    var existingLine = existing.lineNum == null ? "" : String(existing.lineNum);
+    var candidateLine = candidate.lineNum == null ? "" : String(candidate.lineNum);
+
+    if (existing.kind === "undefinedPlaceholder") {
+        return (existing.placeholder || "") === (candidate.placeholder || "") &&
+            existingFile === candidateFile &&
+            existingLine === candidateLine;
+    }
+
+    return (existing.message || "") === (candidate.message || "") &&
+        existingFile === candidateFile &&
+        existingLine === candidateLine;
+}
+
 function pushPlaceholderWarning(entry, node) {
     var stored = _.assign({}, entry);
     if (node && node.lineObj) {
@@ -1947,6 +1968,12 @@ function pushPlaceholderWarning(entry, node) {
         var relativeFilePath = getRelativePath(lineObj.filePath, rootFilePath, fso);
         stored.filePath = relativeFilePath || lineObj.filePath;
         stored.lineNum = lineObj.lineNum;
+    }
+    var isDuplicate = _.some(placeholderWarnings, function(existing) {
+        return isDuplicatePlaceholderWarning(existing, stored);
+    });
+    if (isDuplicate) {
+        return;
     }
     placeholderWarnings.push(stored);
 }
