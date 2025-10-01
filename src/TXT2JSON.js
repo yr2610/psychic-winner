@@ -2716,32 +2716,51 @@ var globalScope = (function(original) {
     }
 
     function runAnchorDeclarations(tplRoot, scope) {
-        var removed = false;
+        function visit(node) {
+            if (!node || !node.children) {
+                return;
+            }
 
-        forAllNodes_Recurse(
-            tplRoot, null, -1,
-            function (n, p, i) {
-                if (!n || n.kind !== kindUL) return;
-                // 子を持つ &foo_array: は既存の配列処理に委ねる（スキップ）
-                if (n.children && n.children.length > 0) return;
-
-                var m = n.text.match(/^&([A-Za-z_]\w*):\s*([\s\S]*)$/);
-                if (!m) return;
-
-                try {
-                    scope[m[1]] = parseConstLiteral(m[2]);
-                } catch (e) {
-                    // サイレント方針なら何もしない
+            for (var i = 0; i < node.children.length; i++) {
+                var child = node.children[i];
+                if (!child) {
+                    continue;
                 }
 
-                if (p) {
-                    p.children[i] = null;
-                    removed = true;
+                if (child.kind === kindUL && (!child.children || child.children.length === 0)) {
+                    var match = child.text && child.text.match(/^&([A-Za-z_]\w*):\s*([\s\S]*)$/);
+                    if (match) {
+                        try {
+                            scope[match[1]] = parseConstLiteral(match[2]);
+                        } catch (e) {
+                            // 既存方針: サイレントに無視
+                        }
+
+                        node.children.splice(i, 1);
+                        i--;
+                        continue;
+                    }
+                }
+
+                visit(child);
+            }
+
+            if (node.templates) {
+                for (var key in node.templates) {
+                    if (!Object.prototype.hasOwnProperty.call(node.templates, key)) {
+                        continue;
+                    }
+                    var templateNode = node.templates[key];
+                    if (!templateNode) {
+                        continue;
+                    }
+                    var cloned = cloneTemplateTree(templateNode);
+                    visit(cloned);
                 }
             }
-        );
+        }
 
-        if (removed) shrinkChildrenArray(tplRoot, null, -1);
+        visit(tplRoot);
     }
 
     // ----- @init をテンプレート外でも実行する -----
@@ -2833,29 +2852,55 @@ var globalScope = (function(original) {
     }
 
     function runInitDirectives(tplRoot, scope) {
-        var changed = false;
-        for (var i = 0; i < tplRoot.children.length; i++) {
-            var n = tplRoot.children[i];
-            if (!n || n.kind !== kindUL) continue;
-
-            var m = (n.text || "").trim().match(/^@init\s*:\s*([\s\S]*)$/);
-            if (!m) continue;
-
-            var code = m[1] || "";
-
-            try {
-                installInitHelpers(scope);
-                execInScope(code, scope);
-            } catch (e) {
-                templateError("init 実行エラー:\n" + e.message, n);
-            } finally {
-                delete scope.$get; delete scope.$set; delete scope.$defaults;
+        function visit(node) {
+            if (!node || !node.children) {
+                return;
             }
 
-            tplRoot.children[i] = null; // 指令ノードは消す
-            changed = true;
+            for (var i = 0; i < node.children.length; i++) {
+                var child = node.children[i];
+                if (!child) {
+                    continue;
+                }
+
+                if (child.kind === kindUL) {
+                    var match = (child.text || "").trim().match(/^@init\s*:\s*([\s\S]*)$/);
+                    if (match) {
+                        var code = match[1] || "";
+                        try {
+                            installInitHelpers(scope);
+                            execInScope(code, scope);
+                        } catch (e) {
+                            templateError("init 実行エラー:\n" + e.message, child);
+                        } finally {
+                            delete scope.$get; delete scope.$set; delete scope.$defaults;
+                        }
+
+                        node.children.splice(i, 1);
+                        i--;
+                        continue;
+                    }
+                }
+
+                visit(child);
+            }
+
+            if (node.templates) {
+                for (var key in node.templates) {
+                    if (!Object.prototype.hasOwnProperty.call(node.templates, key)) {
+                        continue;
+                    }
+                    var templateNode = node.templates[key];
+                    if (!templateNode) {
+                        continue;
+                    }
+                    var cloned = cloneTemplateTree(templateNode);
+                    visit(cloned);
+                }
+            }
         }
-        if (changed) shrinkChildrenArray(tplRoot, null, -1);
+
+        visit(tplRoot);
     }
 
     function expandInlineParamArray(targetNode, targetIndex, paramName, callSiteScope) {
