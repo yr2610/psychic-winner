@@ -3188,6 +3188,13 @@ var globalScope = (function(original) {
                         templateError("パラメータが不正です。\n\n" + e.message, node);
                     }
 
+                    if (parameters === null) {
+                        if (parent && parent.children) {
+                            parent.children[index] = null;
+                        }
+                        return;
+                    }
+
                     try {
                         // ★ 呼び出し地点のスコープを addTemplate に渡す
                         addTemplate(node, index, templateName, parameters, localScope);
