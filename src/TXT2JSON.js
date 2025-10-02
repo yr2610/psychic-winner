@@ -1738,7 +1738,6 @@ _.forEach(noIdNodes, function(infos) {
 });
 
 var lastParsedRoot;
-var previousPlaceholderWarningsBySheet = loadPlaceholderWarningsCache();
 
 (function() {
     // 前回出力したJSONファイルがあれば読む
@@ -1943,6 +1942,7 @@ var PLACEHOLDER_WARN_DIALOG_LIMIT = 3;      // ダイアログに表示する警
 var PLACEHOLDER_WARNINGS_FILENAME = "placeholder_warnings.txt";
 var PLACEHOLDER_WARNINGS_CACHE_FILENAME = "placeholder_warnings.json";
 
+var previousPlaceholderWarningsBySheet = loadPlaceholderWarningsCache();
 var placeholderWarnings = [];
 var cachedPlaceholderWarningsMerged = false;
 
