@@ -1796,6 +1796,7 @@ function getSHA1Hash(input) {
 
 // preprocess 後、 id 付与後のソーステキストをシートごとにhashで持っておく
 var parsedSheetNodeInfos = [];
+var reusedSheetNames = {};
 var srcTexts;   // XXX: root.id 用に保存しておく…
 (function() {
     var children = root.children;
@@ -1848,6 +1849,8 @@ var srcTexts;   // XXX: root.id 用に保存しておく…
                 node: parsedSheetNode
             };
             parsedSheetNodeInfos.push(info);
+            var reusedSheetName = getPlaceholderWarningSheetName(v);
+            reusedSheetNames[reusedSheetName] = true;
             root.children[index] = null;
         }
     });
@@ -1937,10 +1940,63 @@ var PLACEHOLDER_UNDEFINED_IS_ERROR = false; // 将来: 未定義でエラーに�
 var Q_BOOL_STRICT                 = false;  // {{?}} を bool 限定にするか
 var PLACEHOLDER_WARN_DIALOG_LIMIT = 3;      // ダイアログに表示する警告の上限
 var PLACEHOLDER_WARNINGS_FILENAME = "placeholder_warnings.txt";
+var PLACEHOLDER_WARNINGS_CACHE_FILENAME = "placeholder_warnings.json";
 
 var placeholderWarnings = [];
+var cachedPlaceholderWarningsMerged = false;
+var previousPlaceholderWarningsBySheet = loadPlaceholderWarningsCache();
+
+function getPlaceholderWarningSheetName(node) {
+    if (!node) {
+        return "";
+    }
+
+    var current = node;
+    while (current && current !== root) {
+        if (current.parent === root) {
+            var sheetText = current.text;
+            if (sheetText == null) {
+                return "";
+            }
+            return _.isString(sheetText) ? sheetText : String(sheetText);
+        }
+        current = current.parent;
+    }
+
+    return "";
+}
+
+function getPlaceholderWarningFilePath(lineObj) {
+    if (!lineObj) {
+        return void 0;
+    }
+
+    var projectDirectory = lineObj.projectDirectory;
+    var filePathProjectLocal = lineObj.filePath;
+    if (!projectDirectory || !filePathProjectLocal) {
+        return filePathProjectLocal;
+    }
+
+    try {
+        var filePathAbs = sourceLocalPathToAbsolutePath(filePathProjectLocal, projectDirectory);
+        var sourceRelative = absolutePathToSourceLocalPath(filePathAbs, projectDirectory);
+        if (sourceRelative && !/^\.\./.test(sourceRelative)) {
+            return sourceRelative;
+        }
+        var rootRelative = CL.getRelativePath(conf.$rootDirectory, filePathAbs);
+        return rootRelative || filePathProjectLocal;
+    } catch (e) {
+        return filePathProjectLocal;
+    }
+}
 
 function isDuplicatePlaceholderWarning(existing, candidate) {
+    var existingSheet = existing.sheetName || "";
+    var candidateSheet = candidate.sheetName || "";
+    if (existingSheet !== candidateSheet) {
+        return false;
+    }
+
     if (existing.kind !== candidate.kind) {
         return false;
     }
@@ -1961,21 +2017,30 @@ function isDuplicatePlaceholderWarning(existing, candidate) {
         existingLine === candidateLine;
 }
 
-function pushPlaceholderWarning(entry, node) {
+function storePlaceholderWarning(entry) {
     var stored = _.assign({}, entry);
-    if (node && node.lineObj) {
-        var lineObj = node.lineObj;
-        var relativeFilePath = getRelativePath(lineObj.filePath, rootFilePath, fso);
-        stored.filePath = relativeFilePath || lineObj.filePath;
-        stored.lineNum = lineObj.lineNum;
-    }
     var isDuplicate = _.some(placeholderWarnings, function(existing) {
         return isDuplicatePlaceholderWarning(existing, stored);
     });
     if (isDuplicate) {
-        return;
+        return false;
     }
     placeholderWarnings.push(stored);
+    return true;
+}
+
+function pushPlaceholderWarning(entry, node) {
+    var stored = _.assign({}, entry);
+    stored.sheetName = getPlaceholderWarningSheetName(node);
+    if (node && node.lineObj) {
+        var lineObj = node.lineObj;
+        stored.lineNum = lineObj.lineNum;
+        var filePath = getPlaceholderWarningFilePath(lineObj);
+        if (filePath) {
+            stored.filePath = filePath;
+        }
+    }
+    storePlaceholderWarning(stored);
 }
 
 function formatPlaceholderWarning(entry) {
@@ -2016,29 +2081,226 @@ function clearPlaceholderWarningsFile() {
     }
 }
 
+function getPlaceholderWarningsCacheFilePath() {
+    var outputDirectory = fso.GetParentFolderName(outfilePath);
+    return fso.BuildPath(outputDirectory, PLACEHOLDER_WARNINGS_CACHE_FILENAME);
+}
+
+function clearPlaceholderWarningsCacheFile() {
+    var cacheFilePath = getPlaceholderWarningsCacheFilePath();
+    if (fso.FileExists(cacheFilePath)) {
+        try {
+            fso.DeleteFile(cacheFilePath);
+        } catch (e) {
+            // ignore failures (e.g. read-only file)
+        }
+    }
+}
+
+function loadPlaceholderWarningsCache() {
+    var cacheFilePath = getPlaceholderWarningsCacheFilePath();
+    if (!fso.FileExists(cacheFilePath)) {
+        return {};
+    }
+
+    try {
+        var content = CL.readTextFileUTF8(cacheFilePath);
+        if (!content) {
+            return {};
+        }
+        var parsed = JSON.parse(content);
+        var result = {};
+        for (var sheetName in parsed) {
+            if (!parsed.hasOwnProperty(sheetName)) {
+                continue;
+            }
+            var entries = parsed[sheetName];
+            if (!_.isArray(entries)) {
+                continue;
+            }
+            result[sheetName] = _.map(entries, function(entry) {
+                var normalized = _.pick(entry, [
+                    "kind",
+                    "placeholder",
+                    "message",
+                    "filePath",
+                    "lineNum",
+                    "sheetName"
+                ]);
+                if (typeof normalized.sheetName !== "string") {
+                    normalized.sheetName = sheetName;
+                }
+                return normalized;
+            });
+        }
+        return result;
+    } catch (e) {
+        return {};
+    }
+}
+
+function mergeCachedPlaceholderWarnings() {
+    if (cachedPlaceholderWarningsMerged) {
+        return;
+    }
+    cachedPlaceholderWarningsMerged = true;
+
+    if (!previousPlaceholderWarningsBySheet) {
+        previousPlaceholderWarningsBySheet = {};
+    }
+
+    var existingSheets = {};
+    for (var i = 0; i < placeholderWarnings.length; i++) {
+        var sheetKey = placeholderWarnings[i].sheetName || "";
+        existingSheets[sheetKey] = true;
+    }
+
+    for (var sheetName in reusedSheetNames) {
+        if (!reusedSheetNames.hasOwnProperty(sheetName)) {
+            continue;
+        }
+        var sheetKey = sheetName || "";
+        if (existingSheets[sheetKey]) {
+            continue;
+        }
+        var cachedEntries = previousPlaceholderWarningsBySheet[sheetKey];
+        if (!cachedEntries) {
+            continue;
+        }
+        for (var j = 0; j < cachedEntries.length; j++) {
+            storePlaceholderWarning(cachedEntries[j]);
+        }
+        existingSheets[sheetKey] = true;
+    }
+}
+
+function groupPlaceholderWarningsBySheet(entries) {
+    var order = [];
+    var map = {};
+    for (var i = 0; i < entries.length; i++) {
+        var entry = entries[i];
+        var sheetKey = entry.sheetName || "";
+        if (!map.hasOwnProperty(sheetKey)) {
+            map[sheetKey] = [];
+            order.push(sheetKey);
+        }
+        map[sheetKey].push(entry);
+    }
+    return { order: order, map: map };
+}
+
+function savePlaceholderWarningsCache(groupedData) {
+    var cacheFilePath = getPlaceholderWarningsCacheFilePath();
+    var hasEntries = false;
+    var data = {};
+
+    for (var i = 0; i < groupedData.order.length; i++) {
+        var sheetKey = groupedData.order[i];
+        var groupEntries = groupedData.map[sheetKey];
+        if (!groupEntries || groupEntries.length === 0) {
+            continue;
+        }
+        hasEntries = true;
+        data[sheetKey] = _.map(groupEntries, function(entry) {
+            var stored = _.pick(entry, [
+                "kind",
+                "placeholder",
+                "message",
+                "filePath",
+                "lineNum",
+                "sheetName"
+            ]);
+            stored.sheetName = sheetKey;
+            return stored;
+        });
+    }
+
+    if (!hasEntries) {
+        clearPlaceholderWarningsCacheFile();
+        return;
+    }
+
+    try {
+        CL.writeTextFileUTF8(JSON.stringify(data, null, 2), cacheFilePath);
+    } catch (e) {
+        // ignore failures (e.g. read-only file)
+    }
+}
+
 function finalizePlaceholderWarnings() {
+    mergeCachedPlaceholderWarnings();
+
     if (placeholderWarnings.length === 0) {
         clearPlaceholderWarningsFile();
+        clearPlaceholderWarningsCacheFile();
         return null;
     }
 
-    var messages = _.map(placeholderWarnings, formatPlaceholderWarning);
+    var grouped = groupPlaceholderWarningsBySheet(placeholderWarnings);
+
     var limit = PLACEHOLDER_WARN_DIALOG_LIMIT;
-    var shownMessages = messages.slice(0, limit);
+    if (!_.isNumber(limit) || limit <= 0) {
+        limit = placeholderWarnings.length;
+    }
+
+    var remaining = Math.min(limit, placeholderWarnings.length);
+    var shownCount = 0;
+    var shownGroups = [];
+
+    for (var gi = 0; gi < grouped.order.length && remaining > 0; gi++) {
+        var sheetKey = grouped.order[gi];
+        var groupEntries = grouped.map[sheetKey] || [];
+        var groupMessages = [];
+        for (var ei = 0; ei < groupEntries.length && remaining > 0; ei++) {
+            groupMessages.push(formatPlaceholderWarning(groupEntries[ei]));
+            remaining--;
+            shownCount++;
+        }
+        if (groupMessages.length > 0) {
+            shownGroups.push({
+                sheetName: sheetKey,
+                messages: groupMessages
+            });
+        }
+    }
+
     var dialogParts = [];
+    dialogParts.push("警告（全" + placeholderWarnings.length + "件中" + shownCount + "件を表示）");
 
-    dialogParts.push("警告（全" + placeholderWarnings.length + "件中" + shownMessages.length + "件を表示）");
-    dialogParts.push(shownMessages.join("\n\n"));
+    for (var sg = 0; sg < shownGroups.length; sg++) {
+        var group = shownGroups[sg];
+        var sheetDisplayName = group.sheetName ? group.sheetName : "シート不明";
+        dialogParts.push("【" + sheetDisplayName + "】");
+        dialogParts.push(group.messages.join("\n\n"));
+    }
 
-    var moreCount = placeholderWarnings.length - shownMessages.length;
-    var undefinedEntries = _.filter(placeholderWarnings, function(entry) {
-        return entry.kind === "undefinedPlaceholder";
-    });
+    var moreCount = placeholderWarnings.length - shownCount;
 
-    if (undefinedEntries.length > 0) {
+    var undefinedSections = [];
+    for (var ui = 0; ui < grouped.order.length; ui++) {
+        var sheetName = grouped.order[ui];
+        var entries = grouped.map[sheetName] || [];
+        var undefinedMessages = [];
+        for (var uj = 0; uj < entries.length; uj++) {
+            if (entries[uj].kind === "undefinedPlaceholder") {
+                undefinedMessages.push(formatPlaceholderWarning(entries[uj]));
+            }
+        }
+        if (undefinedMessages.length === 0) {
+            continue;
+        }
+        var headerName = sheetName ? sheetName : "シート不明";
+        undefinedSections.push("[" + headerName + "]");
+        undefinedSections.push(undefinedMessages.join("\n\n"));
+    }
+
+    if (undefinedSections.length > 0) {
         var warningsFilePath = getPlaceholderWarningsFilePath();
-        var fileMessages = _.map(undefinedEntries, formatPlaceholderWarning);
-        CL.writeTextFileUTF8(fileMessages.join("\n\n") + "\n", warningsFilePath);
+        try {
+            CL.writeTextFileUTF8(undefinedSections.join("\n\n") + "\n", warningsFilePath);
+        } catch (e) {
+            // ignore failures (e.g. read-only file)
+        }
         dialogParts.push("未定義プレースホルダーの一覧を " + PLACEHOLDER_WARNINGS_FILENAME + " に出力しました。");
     } else {
         clearPlaceholderWarningsFile();
@@ -2047,6 +2309,8 @@ function finalizePlaceholderWarnings() {
     if (moreCount > 0) {
         dialogParts.push("... ほか " + moreCount + " 件の警告があります。");
     }
+
+    savePlaceholderWarningsCache(grouped);
 
     return dialogParts.join("\n\n");
 }
@@ -2231,9 +2495,20 @@ function applyPlaceholdersEverywhere() {
 
             // *template(...) 行は展開側で処理するためスキップ
             var m = node.text && node.text.trim().match(/^\*([A-Za-z_]\w*)\((.*)\)$/);
+            var skipChildren = false;
             if (!m) {
                 var ok = replacePlaceholdersInNode(node, localScope, null);
-                if (!ok && parent) parent.children[index] = null;
+                if (!ok) {
+                    if (parent) {
+                        parent.children[index] = null;
+                    }
+                    skipChildren = true;
+                }
+            }
+
+            if (skipChildren) {
+                scopeStack.pop();
+                return true;
             }
         },
         // post
