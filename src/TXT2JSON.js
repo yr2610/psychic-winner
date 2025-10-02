@@ -1738,6 +1738,7 @@ _.forEach(noIdNodes, function(infos) {
 });
 
 var lastParsedRoot;
+var previousPlaceholderWarningsBySheet = loadPlaceholderWarningsCache();
 
 (function() {
     // 前回出力したJSONファイルがあれば読む
@@ -1841,16 +1842,16 @@ var srcTexts;   // XXX: root.id 用に保存しておく…
         }
 
         var parsedSheetNode = getParsedSheetNode(v);
+        var sheetNameForWarnings = getPlaceholderWarningSheetName(v);
 
         // srcHash が同じ sheetNode があれば、そのまま再利用
-        if (parsedSheetNode) {
+        if (shouldReuseParsedSheetNode(parsedSheetNode, sheetNameForWarnings)) {
             var info = {
                 index: index,
                 node: parsedSheetNode
             };
             parsedSheetNodeInfos.push(info);
-            var reusedSheetName = getPlaceholderWarningSheetName(v);
-            reusedSheetNames[reusedSheetName] = true;
+            reusedSheetNames[sheetNameForWarnings] = true;
             root.children[index] = null;
         }
     });
@@ -1944,7 +1945,6 @@ var PLACEHOLDER_WARNINGS_CACHE_FILENAME = "placeholder_warnings.json";
 
 var placeholderWarnings = [];
 var cachedPlaceholderWarningsMerged = false;
-var previousPlaceholderWarningsBySheet = loadPlaceholderWarningsCache();
 
 function getPlaceholderWarningSheetName(node) {
     if (!node) {
@@ -1964,6 +1964,21 @@ function getPlaceholderWarningSheetName(node) {
     }
 
     return "";
+}
+
+function shouldReuseParsedSheetNode(parsedSheetNode, sheetName) {
+    if (!parsedSheetNode) {
+        return false;
+    }
+
+    var sheetKey = sheetName || "";
+    if (previousPlaceholderWarningsBySheet &&
+        previousPlaceholderWarningsBySheet[sheetKey] &&
+        previousPlaceholderWarningsBySheet[sheetKey].length > 0) {
+        return false;
+    }
+
+    return true;
 }
 
 function getPlaceholderWarningFilePath(lineObj) {
