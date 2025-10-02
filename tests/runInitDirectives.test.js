@@ -125,4 +125,23 @@ paramScope.spy = function(value) {
 context.runInitDirectives(paramAwareTemplate, paramScope);
 assert.strictEqual(paramScope.captured, "bar", "@init should access params inherited via scope chaining");
 
+// Ensure child.params defined on @init can share values with subsequent directives.
+const sharedTemplate = {
+  kind: kindUL,
+  text: "&Shared()",
+  children: [],
+  templates: {}
+};
+
+const sharedParent = makeNode("- holder", sharedTemplate);
+const initWithParams = makeNode("@init: $set('shared', ($get('shared') || 0) + extra)", sharedParent);
+initWithParams.params = { extra: 1 };
+const initFollower = makeNode("@init: $set('shared', ($get('shared') || 0) + 1)", sharedParent);
+sharedParent.children.push(initWithParams, initFollower);
+sharedTemplate.children.push(sharedParent);
+
+const sharedScope = {};
+context.runInitDirectives(sharedTemplate, sharedScope);
+assert.strictEqual(sharedScope.shared, 2, "@init with params should propagate scope changes to later siblings");
+
 console.log("runInitDirectives nested template test passed.");

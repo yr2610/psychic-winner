@@ -3164,8 +3164,19 @@ var globalScope = (function(original) {
                         if (match) {
                             var code = match[1] || "";
                             var directiveScope = localScope;
+                            var propagateToLocal = false;
+                            var before = null;
                             if (child.params) {
-                                directiveScope = extendScope(directiveScope, child.params);
+                                var extended = extendScope(directiveScope, child.params);
+                                propagateToLocal = (extended !== directiveScope);
+                                directiveScope = extended;
+                                if (propagateToLocal) {
+                                    before = {};
+                                    for (var snapshotKey in directiveScope) {
+                                        if (!Object.prototype.hasOwnProperty.call(directiveScope, snapshotKey)) continue;
+                                        before[snapshotKey] = directiveScope[snapshotKey];
+                                    }
+                                }
                             }
                             try {
                                 installInitHelpers(directiveScope);
@@ -3174,6 +3185,19 @@ var globalScope = (function(original) {
                                 templateError("init 実行エラー:\n" + e.message, child);
                             } finally {
                                 delete directiveScope.$get; delete directiveScope.$set; delete directiveScope.$defaults;
+                                if (propagateToLocal) {
+                                    for (var diffKey in directiveScope) {
+                                        if (!Object.prototype.hasOwnProperty.call(directiveScope, diffKey)) continue;
+                                        if (diffKey.charAt(0) === "$") continue;
+                                        if (typeof directiveScope[diffKey] === "function") continue;
+
+                                        var isNew = !Object.prototype.hasOwnProperty.call(before, diffKey);
+                                        var changed = isNew ? true : (before[diffKey] !== directiveScope[diffKey]);
+                                        if (isNew || changed) {
+                                            localScope[diffKey] = directiveScope[diffKey];
+                                        }
+                                    }
+                                }
                             }
 
                             node.children.splice(i, 1);
