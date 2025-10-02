@@ -3127,37 +3127,48 @@ var globalScope = (function(original) {
     }
 
     function runInitDirectives(tplRoot, scope) {
-        function visit(node) {
-            if (!node || !node.children) {
+        function visit(node, currentScope) {
+            if (!node) {
                 return;
             }
 
-            for (var i = 0; i < node.children.length; i++) {
-                var child = node.children[i];
-                if (!child) {
-                    continue;
-                }
+            var localScope = currentScope || {};
+            if (node.params) {
+                localScope = extendScope(localScope, node.params);
+            }
 
-                if (child.kind === kindUL) {
-                    var match = (child.text || "").trim().match(/^@init\s*:\s*([\s\S]*)$/);
-                    if (match) {
-                        var code = match[1] || "";
-                        try {
-                            installInitHelpers(scope);
-                            execInScope(code, scope);
-                        } catch (e) {
-                            templateError("init 実行エラー:\n" + e.message, child);
-                        } finally {
-                            delete scope.$get; delete scope.$set; delete scope.$defaults;
-                        }
-
-                        node.children.splice(i, 1);
-                        i--;
+            if (node.children) {
+                for (var i = 0; i < node.children.length; i++) {
+                    var child = node.children[i];
+                    if (!child) {
                         continue;
                     }
-                }
 
-                visit(child);
+                    if (child.kind === kindUL) {
+                        var match = (child.text || "").trim().match(/^@init\s*:\s*([\s\S]*)$/);
+                        if (match) {
+                            var code = match[1] || "";
+                            var directiveScope = localScope;
+                            if (child.params) {
+                                directiveScope = extendScope(directiveScope, child.params);
+                            }
+                            try {
+                                installInitHelpers(directiveScope);
+                                execInScope(code, directiveScope);
+                            } catch (e) {
+                                templateError("init 実行エラー:\n" + e.message, child);
+                            } finally {
+                                delete directiveScope.$get; delete directiveScope.$set; delete directiveScope.$defaults;
+                            }
+
+                            node.children.splice(i, 1);
+                            i--;
+                            continue;
+                        }
+                    }
+
+                    visit(child, localScope);
+                }
             }
 
             if (node.templates) {
@@ -3170,12 +3181,12 @@ var globalScope = (function(original) {
                         continue;
                     }
                     var cloned = cloneTemplateTree(templateNode);
-                    visit(cloned);
+                    visit(cloned, localScope);
                 }
             }
         }
 
-        visit(tplRoot);
+        visit(tplRoot, scope || {});
     }
 
     function expandInlineParamArray(targetNode, targetIndex, paramName, callSiteScope) {

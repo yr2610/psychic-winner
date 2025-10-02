@@ -57,6 +57,7 @@ vm.createContext(context);
 vm.runInContext(extractDeclaration(/var kindUL\s*=\s*"UL";/), context);
 vm.runInContext(extractFunction("installInitHelpers"), context);
 vm.runInContext(extractFunction("cloneTemplateTree"), context);
+vm.runInContext("extendScope = " + extractFunction("extendScope"), context);
 vm.runInContext("runInitDirectives = " + extractFunction("runInitDirectives"), context);
 
 const kindUL = context.kindUL;
@@ -101,5 +102,27 @@ expandDeep(scope);
 assert.strictEqual(scope.runs, 1, "First expansion should run @init once");
 expandDeep(scope);
 assert.strictEqual(scope.runs, 2, "Second expansion should run @init again");
+
+// Ensure params attached to a node are visible to nested @init directives.
+const paramAwareTemplate = {
+  kind: kindUL,
+  text: "&ParamAware()",
+  children: [],
+  templates: {}
+};
+
+const paramParent = makeNode("- holder", paramAwareTemplate);
+paramParent.params = { foo: "bar" };
+
+const paramInit = makeNode("@init: spy(foo)", paramParent);
+paramParent.children.push(paramInit);
+paramAwareTemplate.children.push(paramParent);
+
+const paramScope = {};
+paramScope.spy = function(value) {
+  paramScope.captured = value;
+};
+context.runInitDirectives(paramAwareTemplate, paramScope);
+assert.strictEqual(paramScope.captured, "bar", "@init should access params inherited via scope chaining");
 
 console.log("runInitDirectives nested template test passed.");
