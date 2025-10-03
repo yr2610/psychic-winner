@@ -1,4 +1,4 @@
-function alert(s) {
+﻿function alert(s) {
     WScript.Echo(s);
 }
 
