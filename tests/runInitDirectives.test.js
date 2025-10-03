@@ -97,13 +97,36 @@ deepTemplate.parent = innerTemplate;
 function expandDeep(scope) {
   const clone = context.cloneTemplateTree(deepTemplate);
   context.runInitDirectives(clone, scope);
+  return clone;
 }
 
 const scope = {};
-expandDeep(scope);
-assert.strictEqual(scope.runs, 1, "First expansion should run @init once");
-expandDeep(scope);
-assert.strictEqual(scope.runs, 2, "Second expansion should run @init again");
+const firstRun = expandDeep(scope);
+assert.strictEqual(
+  Object.prototype.hasOwnProperty.call(scope, "runs"),
+  false,
+  "Brand-new keys assigned in @init should remain scoped to the branch"
+);
+assert.strictEqual(
+  firstRun.children[0]._initScopeLayer.runs,
+  1,
+  "First expansion should record run count within the branch overlay"
+);
+
+const secondRun = expandDeep(scope);
+assert.strictEqual(
+  secondRun.children[0]._initScopeLayer.runs,
+  1,
+  "Repeated expansions should still execute @init without leaking counters"
+);
+
+const seededScope = { runs: 0 };
+expandDeep(seededScope);
+assert.strictEqual(
+  seededScope.runs,
+  1,
+  "Pre-existing keys should continue to receive propagated updates"
+);
 
 // Ensure params attached to a node are visible to nested @init directives.
 const paramAwareTemplate = {
@@ -144,7 +167,16 @@ sharedTemplate.children.push(sharedParent);
 
 const sharedScope = {};
 context.runInitDirectives(sharedTemplate, sharedScope);
-assert.strictEqual(sharedScope.shared, 2, "@init with params should propagate scope changes to later siblings");
+assert.strictEqual(
+  Object.prototype.hasOwnProperty.call(sharedScope, "shared"),
+  false,
+  "Branch-local accumulators should not leak onto the root scope"
+);
+assert.strictEqual(
+  sharedParent._initScopeLayer.shared,
+  2,
+  "@init with params should propagate scope changes to later siblings via the branch overlay"
+);
 
 // Ensure sibling branches do not leak conflicting params into each other.
 const siblingTemplate = {
@@ -178,6 +210,12 @@ assert.deepStrictEqual(
 );
 
 assert.strictEqual(
+  Object.prototype.hasOwnProperty.call(siblingScope, "dessert"),
+  false,
+  "Root scope should not be polluted by branch-local @init variables"
+);
+
+assert.strictEqual(
   firstBranch._initScopeLayer.dessert,
   "strawberry",
   "First branch should capture its own dessert override"
@@ -188,17 +226,30 @@ assert.strictEqual(
   "Second branch should capture its own dessert override"
 );
 
+const templateLayer = context.getInheritedScopeLayer(siblingTemplate) || {};
+assert.strictEqual(
+  Object.prototype.hasOwnProperty.call(templateLayer, "dessert"),
+  false,
+  "Template-level overlays should not inherit branch-local keys"
+);
+
 const evaluationRootScope = context.extendScope(
   siblingScope,
-  context.getInheritedScopeLayer(siblingTemplate) || {}
+  templateLayer
 );
+assert.strictEqual(
+  Object.prototype.hasOwnProperty.call(evaluationRootScope, "dessert"),
+  false,
+  "Evaluated parent scope should remain free of branch-local keys"
+);
+
 const firstBranchScope = context.extendScope(
   evaluationRootScope,
-  context.getInheritedScopeLayer(firstBranch) || {}
+  firstBranch._initScopeLayer || {}
 );
 const secondBranchScope = context.extendScope(
   evaluationRootScope,
-  context.getInheritedScopeLayer(secondBranch) || {}
+  secondBranch._initScopeLayer || {}
 );
 
 assert.strictEqual(
