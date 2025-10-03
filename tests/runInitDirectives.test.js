@@ -144,4 +144,35 @@ const sharedScope = {};
 context.runInitDirectives(sharedTemplate, sharedScope);
 assert.strictEqual(sharedScope.shared, 2, "@init with params should propagate scope changes to later siblings");
 
+// Ensure sibling branches do not leak conflicting params into each other.
+const siblingTemplate = {
+  kind: kindUL,
+  text: "&SiblingIsolation()",
+  children: [],
+  templates: {}
+};
+
+function makeBranch(name, flavor, parent) {
+  const branch = makeNode(name, parent);
+  branch.params = { flavor: flavor };
+  const init = makeNode("@init: $set('dessert', flavor); outputs.push($get('dessert'))", branch);
+  branch.children.push(init);
+  return branch;
+}
+
+const siblingParent = makeNode("- siblings", siblingTemplate);
+siblingTemplate.children.push(siblingParent);
+
+const firstBranch = makeBranch("- first", "strawberry", siblingParent);
+const secondBranch = makeBranch("- second", "vanilla", siblingParent);
+siblingParent.children.push(firstBranch, secondBranch);
+
+const siblingScope = { outputs: [] };
+context.runInitDirectives(siblingTemplate, siblingScope);
+assert.deepStrictEqual(
+  siblingScope.outputs,
+  ["strawberry", "vanilla"],
+  "Each sibling @init should observe its own params without interference"
+);
+
 console.log("runInitDirectives nested template test passed.");
