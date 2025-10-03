@@ -3586,7 +3586,7 @@ var globalScope = (function(original) {
                     var templateName = match[1];
                     var parameters;
                     try {
-                        parameters = evalTemplateParameters(match[2], node, {});
+                        parameters = evalTemplateParameters(match[2], node, localScope);
                     } catch(e) {
                         templateError("パラメータが不正です。\n\n" + e.message, node);
                     }
