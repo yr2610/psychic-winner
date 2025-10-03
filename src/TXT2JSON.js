@@ -3282,9 +3282,17 @@ var globalScope = (function(original) {
                     if (diffKey.charAt(0) === "$") continue;
                     if (typeof localScope[diffKey] === "function") continue;
 
-                    var isNew = !Object.prototype.hasOwnProperty.call(scopeSnapshot, diffKey);
-                    var changed = isNew ? true : (scopeSnapshot[diffKey] !== localScope[diffKey]);
-                    if (isNew || changed) {
+                    var existedBefore = Object.prototype.hasOwnProperty.call(scopeSnapshot, diffKey);
+                    var previousValue = existedBefore ? scopeSnapshot[diffKey] : undefined;
+
+                    if (!existedBefore && (diffKey in parentScope)) {
+                        existedBefore = true;
+                        previousValue = parentScope[diffKey];
+                    }
+
+                    if (!existedBefore) continue;
+
+                    if (previousValue !== localScope[diffKey]) {
                         parentScope[diffKey] = localScope[diffKey];
                     }
                 }
