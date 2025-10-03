@@ -2619,7 +2619,14 @@ var globalScope = (function(original) {
           _.defaults(referableParams, globalScope);
         }
         if (!_.isUndefined(currentParameters)) {
-            _.defaults(referableParams, currentParameters);
+            var scopeCursor = currentParameters;
+            while (scopeCursor && scopeCursor !== Object.prototype) {
+                var ownLayer = extractOwnScopeLayer(scopeCursor);
+                if (!_.isUndefined(ownLayer)) {
+                    _.defaults(referableParams, ownLayer);
+                }
+                scopeCursor = Object.getPrototypeOf(scopeCursor);
+            }
         }
         for (var parent = node.parent; !_.isUndefined(parent); parent = parent.parent) {
             if (!_.isUndefined(parent.params)) {

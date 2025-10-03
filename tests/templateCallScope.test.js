@@ -59,38 +59,58 @@ vm.runInContext(extractDeclaration(/var kindUL\s*=\s*"UL";/), context);
 vm.runInContext(extractDeclaration(/var templateParamFnCache\s*=\s*Object\.create\(null\);/), context);
 vm.runInContext(extractFunction("attachArgAliases"), context);
 vm.runInContext(extractFunction("extendScope"), context);
+vm.runInContext("extractOwnScopeLayer = " + extractFunction("extractOwnScopeLayer"), context);
 vm.runInContext("getInheritedScopeLayer = " + extractFunction("getInheritedScopeLayer"), context);
 vm.runInContext("evalTemplateParameters = " + extractFunction("evalTemplateParameters"), context);
 vm.runInContext(extractFunction("forAllNodes_Recurse"), context);
 vm.runInContext("expandAllTemplateCalls = " + extractFunction("expandAllTemplateCalls"), context);
 
-const root = {
-  kind: context.kindUL,
-  text: "- root",
-  children: []
-};
+function createNode(kind, text, parent) {
+  const node = {
+    kind,
+    text,
+    children: []
+  };
+  if (parent) {
+    node.parent = parent;
+  }
+  return node;
+}
 
-const callNode = {
-  kind: context.kindUL,
-  text: "*Dummy(count)",
-  children: [],
-  parent: root,
-  _initScopeLayer: { count: 3 }
-};
+function runScenario(description, setup) {
+  const { root, expectedParameterValue } = setup();
 
-root.children.push(callNode);
-context.root = root;
+  context.root = root;
 
-let captured = null;
-context.addTemplate = function(node, index, templateName, parameters, localScope) {
-  captured = { node, index, templateName, parameters, localScope };
-};
+  let captured = null;
+  context.addTemplate = function(node, index, templateName, parameters, localScope) {
+    captured = { node, index, templateName, parameters, localScope };
+  };
 
-context.expandAllTemplateCalls();
+  context.expandAllTemplateCalls();
 
-assert.ok(captured, "Template call should invoke addTemplate");
-assert.strictEqual(captured.templateName, "Dummy", "Template name should match the invocation");
-assert.strictEqual(captured.parameters, 3, "Parameters should resolve using the inherited init scope");
-assert.strictEqual(captured.localScope.count, 3, "Local scope passed to addTemplate should expose the init value");
+  assert.ok(captured, description + ": Template call should invoke addTemplate");
+  assert.strictEqual(captured.templateName, "Dummy", description + ": Template name should match the invocation");
+  assert.strictEqual(captured.parameters, expectedParameterValue, description + ": Parameters should resolve using the init scope");
+  assert.strictEqual(captured.localScope.count, expectedParameterValue, description + ": Local scope passed to addTemplate should expose the init value");
+}
 
-console.log("Template call scope propagation test passed.");
+runScenario("Direct init scope on call node", function() {
+  const root = createNode(context.kindUL, "- root", null);
+  const callNode = createNode(context.kindUL, "*Dummy(count)", root);
+  callNode._initScopeLayer = { count: 3 };
+  root.children.push(callNode);
+  return { root, expectedParameterValue: 3 };
+});
+
+runScenario("Inherited init scope from ancestor", function() {
+  const root = createNode(context.kindUL, "- root", null);
+  root._initScopeLayer = { count: 5 };
+
+  const callNode = createNode(context.kindUL, "*Dummy(count)", root);
+  root.children.push(callNode);
+
+  return { root, expectedParameterValue: 5 };
+});
+
+console.log("Template call scope propagation tests passed.");
