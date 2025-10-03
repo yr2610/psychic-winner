@@ -2333,10 +2333,35 @@ function finalizePlaceholderWarnings() {
 // 親スコープをプロトタイプ継承し、現在ノードのレイヤーを上書きで乗せる
 function extendScope(parentScope, layer) {
     var base = parentScope || (typeof globalScope !== "undefined" ? globalScope : {});
-    if (!layer) return base;
     var child = Object.create(base);
-    _.assign(child, layer); // 近いもの勝ち（シャドーイング）
+    if (layer) {
+        _.assign(child, layer); // 近いもの勝ち（シャドーイング）
+    }
     return child;
+}
+
+function extractOwnScopeLayer(scope) {
+    var layer = {};
+    for (var key in scope) {
+        if (!Object.prototype.hasOwnProperty.call(scope, key)) {
+            continue;
+        }
+        layer[key] = scope[key];
+    }
+    return layer;
+}
+
+function getInheritedScopeLayer(node) {
+    if (!node) {
+        return null;
+    }
+    if (node._initScopeLayer) {
+        return node._initScopeLayer;
+    }
+    if (node.params) {
+        return node.params;
+    }
+    return null;
 }
 
 // キャッシュ付き evaluator（プロトタイプ継承を素直に使える）
@@ -2495,10 +2520,8 @@ function applyPlaceholdersEverywhere() {
             if (!node) return true;
 
             var parentScope = scopeStack[scopeStack.length - 1];
-            var localScope  = parentScope;
-
-            // 現在ノードの params を反映
-            if (node.params) localScope = extendScope(localScope, node.params);
+            var inheritedLayer = getInheritedScopeLayer(node) || {};
+            var localScope  = extendScope(parentScope, inheritedLayer);
 
             // root直下（=シート）だけ疑似引数を上乗せしたい場合
             if (parent === root) {
@@ -3057,6 +3080,7 @@ var globalScope = (function(original) {
     function runInitDirectivesGlobally(root) {
         if (typeof globalScope === "undefined") { globalScope = {}; }
         var scopeStack = [ globalScope ];
+        var snapshotStack = [];
 
         forAllNodes_Recurse(
             root, null, -1,
@@ -3064,9 +3088,14 @@ var globalScope = (function(original) {
                 if (!node) return true;
 
                 var parentScope = scopeStack[scopeStack.length - 1];
-                var localScope = parentScope;
-                if (node.params) localScope = extendScope(localScope, node.params);
+                var localScope = extendScope(parentScope, node.params || {});
+                var before = {};
+                for (var key in localScope) {
+                    if (!Object.prototype.hasOwnProperty.call(localScope, key)) continue;
+                    before[key] = localScope[key];
+                }
                 scopeStack.push(localScope);
+                snapshotStack.push({ scope: localScope, parent: parentScope, before: before });
 
                 // UL の 「@init: <code>」のみ対応（コロン必須 / 子ULは読まない）
                 if (node.kind === kindUL) {
@@ -3125,7 +3154,26 @@ var globalScope = (function(original) {
                     }
                 }
             },
-            function () { scopeStack.pop(); }
+            function () {
+                var state = snapshotStack.pop();
+                var localScope = state.scope;
+                var parentScope = state.parent;
+                var before = state.before;
+
+                for (var diffKey in localScope) {
+                    if (!Object.prototype.hasOwnProperty.call(localScope, diffKey)) continue;
+                    if (diffKey.charAt(0) === "$") continue;
+                    if (typeof localScope[diffKey] === "function") continue;
+
+                    var isNew = !Object.prototype.hasOwnProperty.call(before, diffKey);
+                    var changed = isNew ? true : (before[diffKey] !== localScope[diffKey]);
+                    if (isNew || changed) {
+                        parentScope[diffKey] = localScope[diffKey];
+                    }
+                }
+
+                scopeStack.pop();
+            }
         );
 
         // children の null を掃除
@@ -3142,15 +3190,14 @@ var globalScope = (function(original) {
     }
 
     function runInitDirectives(tplRoot, scope) {
-        function visit(node, currentScope) {
+        function visit(node, parentScope) {
             if (!node) {
-                return;
+                return {};
             }
 
-            var localScope = currentScope || {};
-            if (node.params) {
-                localScope = extendScope(localScope, node.params);
-            }
+            var baseLayer = node.params || {};
+            var localScope = extendScope(parentScope || {}, baseLayer);
+            var scopeSnapshot = extractOwnScopeLayer(localScope);
 
             if (node.children) {
                 for (var i = 0; i < node.children.length; i++) {
@@ -3171,11 +3218,7 @@ var globalScope = (function(original) {
                                 propagateToLocal = (extended !== directiveScope);
                                 directiveScope = extended;
                                 if (propagateToLocal) {
-                                    before = {};
-                                    for (var snapshotKey in directiveScope) {
-                                        if (!Object.prototype.hasOwnProperty.call(directiveScope, snapshotKey)) continue;
-                                        before[snapshotKey] = directiveScope[snapshotKey];
-                                    }
+                                    before = extractOwnScopeLayer(directiveScope);
                                 }
                             }
                             try {
@@ -3223,6 +3266,31 @@ var globalScope = (function(original) {
                     visit(cloned, localScope);
                 }
             }
+
+            var overlay = extractOwnScopeLayer(localScope);
+            if (_.isEmpty(overlay)) {
+                if (node._initScopeLayer) {
+                    delete node._initScopeLayer;
+                }
+            } else {
+                node._initScopeLayer = overlay;
+            }
+
+            if (parentScope) {
+                for (var diffKey in localScope) {
+                    if (!Object.prototype.hasOwnProperty.call(localScope, diffKey)) continue;
+                    if (diffKey.charAt(0) === "$") continue;
+                    if (typeof localScope[diffKey] === "function") continue;
+
+                    var isNew = !Object.prototype.hasOwnProperty.call(scopeSnapshot, diffKey);
+                    var changed = isNew ? true : (scopeSnapshot[diffKey] !== localScope[diffKey]);
+                    if (isNew || changed) {
+                        parentScope[diffKey] = localScope[diffKey];
+                    }
+                }
+            }
+
+            return overlay;
         }
 
         visit(tplRoot, scope || {});
@@ -3367,7 +3435,8 @@ var globalScope = (function(original) {
                 function(n, p, i) {
                     if (!n) return true;
                     var parentScope = tplStack[tplStack.length - 1];
-                    var localScope  = n.params ? extendScope(parentScope, n.params) : parentScope;
+                    var inheritedLayer = getInheritedScopeLayer(n) || {};
+                    var localScope  = extendScope(parentScope, inheritedLayer);
                     tplStack.push(localScope);
                     var ok = replacePlaceholdersInNode(n, localScope, defaultParam);
                     if (!ok) { n.parent.children[i] = null; return; }
@@ -3381,7 +3450,8 @@ var globalScope = (function(original) {
         var tplScopeStack = [ parametersScopeTop ];
         forAllNodes_Recurse(templateRoot, null, -1, function(n, p, i) {
             var parentScope = tplScopeStack[tplScopeStack.length - 1];
-            var localScope  = n && n.params ? extendScope(parentScope, n.params) : parentScope;
+            var inheritedLayer = getInheritedScopeLayer(n) || {};
+            var localScope  = extendScope(parentScope, inheritedLayer);
             tplScopeStack.push(localScope);
 
             if (p === null) {
@@ -3485,8 +3555,8 @@ var globalScope = (function(original) {
                 if (!node) return true;
 
                 var parentScope = scopeStack[scopeStack.length - 1];
-                var localScope  = parentScope;
-                if (node.params) localScope = extendScope(localScope, node.params);
+                var inheritedLayer = getInheritedScopeLayer(node) || {};
+                var localScope  = extendScope(parentScope, inheritedLayer);
                 scopeStack.push(localScope);
 
                 var trimmedText = node.text && node.text.trim();
