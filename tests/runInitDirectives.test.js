@@ -57,7 +57,9 @@ vm.createContext(context);
 vm.runInContext(extractDeclaration(/var kindUL\s*=\s*"UL";/), context);
 vm.runInContext(extractFunction("installInitHelpers"), context);
 vm.runInContext(extractFunction("cloneTemplateTree"), context);
+vm.runInContext("extractOwnScopeLayer = " + extractFunction("extractOwnScopeLayer"), context);
 vm.runInContext("extendScope = " + extractFunction("extendScope"), context);
+vm.runInContext("getInheritedScopeLayer = " + extractFunction("getInheritedScopeLayer"), context);
 vm.runInContext("runInitDirectives = " + extractFunction("runInitDirectives"), context);
 
 const kindUL = context.kindUL;
@@ -173,6 +175,41 @@ assert.deepStrictEqual(
   siblingScope.outputs,
   ["strawberry", "vanilla"],
   "Each sibling @init should observe its own params without interference"
+);
+
+assert.strictEqual(
+  firstBranch._initScopeLayer.dessert,
+  "strawberry",
+  "First branch should capture its own dessert override"
+);
+assert.strictEqual(
+  secondBranch._initScopeLayer.dessert,
+  "vanilla",
+  "Second branch should capture its own dessert override"
+);
+
+const evaluationRootScope = context.extendScope(
+  siblingScope,
+  context.getInheritedScopeLayer(siblingTemplate) || {}
+);
+const firstBranchScope = context.extendScope(
+  evaluationRootScope,
+  context.getInheritedScopeLayer(firstBranch) || {}
+);
+const secondBranchScope = context.extendScope(
+  evaluationRootScope,
+  context.getInheritedScopeLayer(secondBranch) || {}
+);
+
+assert.strictEqual(
+  firstBranchScope.dessert,
+  "strawberry",
+  "Branch scopes should prefer their own @init values when rendering"
+);
+assert.strictEqual(
+  secondBranchScope.dessert,
+  "vanilla",
+  "Sibling scopes should not leak @init values between branches"
 );
 
 console.log("runInitDirectives nested template test passed.");

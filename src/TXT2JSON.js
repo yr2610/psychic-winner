@@ -1,4 +1,4 @@
-﻿function alert(s) {
+function alert(s) {
     WScript.Echo(s);
 }
 
@@ -2340,6 +2340,30 @@ function extendScope(parentScope, layer) {
     return child;
 }
 
+function extractOwnScopeLayer(scope) {
+    var layer = {};
+    for (var key in scope) {
+        if (!Object.prototype.hasOwnProperty.call(scope, key)) {
+            continue;
+        }
+        layer[key] = scope[key];
+    }
+    return layer;
+}
+
+function getInheritedScopeLayer(node) {
+    if (!node) {
+        return null;
+    }
+    if (node._initScopeLayer) {
+        return node._initScopeLayer;
+    }
+    if (node.params) {
+        return node.params;
+    }
+    return null;
+}
+
 // キャッシュ付き evaluator（プロトタイプ継承を素直に使える）
 var __EVAL_EXPR_CACHE = {};
 function evalExprWithScope(expr, scope) {
@@ -2496,10 +2520,8 @@ function applyPlaceholdersEverywhere() {
             if (!node) return true;
 
             var parentScope = scopeStack[scopeStack.length - 1];
-            var localScope  = parentScope;
-
-            // 現在ノードの params を反映
-            if (node.params) localScope = extendScope(localScope, node.params);
+            var inheritedLayer = getInheritedScopeLayer(node) || {};
+            var localScope  = extendScope(parentScope, inheritedLayer);
 
             // root直下（=シート）だけ疑似引数を上乗せしたい場合
             if (parent === root) {
@@ -3168,17 +3190,14 @@ var globalScope = (function(original) {
     }
 
     function runInitDirectives(tplRoot, scope) {
-        function visit(node, currentScope) {
+        function visit(node, parentScope) {
             if (!node) {
-                return;
+                return {};
             }
 
-            var localScope = extendScope(currentScope || {}, node.params || {});
-            var scopeSnapshot = {};
-            for (var key in localScope) {
-                if (!Object.prototype.hasOwnProperty.call(localScope, key)) continue;
-                scopeSnapshot[key] = localScope[key];
-            }
+            var baseLayer = node.params || {};
+            var localScope = extendScope(parentScope || {}, baseLayer);
+            var scopeSnapshot = extractOwnScopeLayer(localScope);
 
             if (node.children) {
                 for (var i = 0; i < node.children.length; i++) {
@@ -3199,11 +3218,7 @@ var globalScope = (function(original) {
                                 propagateToLocal = (extended !== directiveScope);
                                 directiveScope = extended;
                                 if (propagateToLocal) {
-                                    before = {};
-                                    for (var snapshotKey in directiveScope) {
-                                        if (!Object.prototype.hasOwnProperty.call(directiveScope, snapshotKey)) continue;
-                                        before[snapshotKey] = directiveScope[snapshotKey];
-                                    }
+                                    before = extractOwnScopeLayer(directiveScope);
                                 }
                             }
                             try {
@@ -3252,7 +3267,16 @@ var globalScope = (function(original) {
                 }
             }
 
-            if (currentScope) {
+            var overlay = extractOwnScopeLayer(localScope);
+            if (_.isEmpty(overlay)) {
+                if (node._initScopeLayer) {
+                    delete node._initScopeLayer;
+                }
+            } else {
+                node._initScopeLayer = overlay;
+            }
+
+            if (parentScope) {
                 for (var diffKey in localScope) {
                     if (!Object.prototype.hasOwnProperty.call(localScope, diffKey)) continue;
                     if (diffKey.charAt(0) === "$") continue;
@@ -3261,10 +3285,12 @@ var globalScope = (function(original) {
                     var isNew = !Object.prototype.hasOwnProperty.call(scopeSnapshot, diffKey);
                     var changed = isNew ? true : (scopeSnapshot[diffKey] !== localScope[diffKey]);
                     if (isNew || changed) {
-                        currentScope[diffKey] = localScope[diffKey];
+                        parentScope[diffKey] = localScope[diffKey];
                     }
                 }
             }
+
+            return overlay;
         }
 
         visit(tplRoot, scope || {});
@@ -3409,7 +3435,8 @@ var globalScope = (function(original) {
                 function(n, p, i) {
                     if (!n) return true;
                     var parentScope = tplStack[tplStack.length - 1];
-                    var localScope  = n.params ? extendScope(parentScope, n.params) : parentScope;
+                    var inheritedLayer = getInheritedScopeLayer(n) || {};
+                    var localScope  = extendScope(parentScope, inheritedLayer);
                     tplStack.push(localScope);
                     var ok = replacePlaceholdersInNode(n, localScope, defaultParam);
                     if (!ok) { n.parent.children[i] = null; return; }
@@ -3423,7 +3450,8 @@ var globalScope = (function(original) {
         var tplScopeStack = [ parametersScopeTop ];
         forAllNodes_Recurse(templateRoot, null, -1, function(n, p, i) {
             var parentScope = tplScopeStack[tplScopeStack.length - 1];
-            var localScope  = n && n.params ? extendScope(parentScope, n.params) : parentScope;
+            var inheritedLayer = getInheritedScopeLayer(n) || {};
+            var localScope  = extendScope(parentScope, inheritedLayer);
             tplScopeStack.push(localScope);
 
             if (p === null) {
@@ -3527,8 +3555,8 @@ var globalScope = (function(original) {
                 if (!node) return true;
 
                 var parentScope = scopeStack[scopeStack.length - 1];
-                var localScope  = parentScope;
-                if (node.params) localScope = extendScope(localScope, node.params);
+                var inheritedLayer = getInheritedScopeLayer(node) || {};
+                var localScope  = extendScope(parentScope, inheritedLayer);
                 scopeStack.push(localScope);
 
                 var trimmedText = node.text && node.text.trim();
