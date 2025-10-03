@@ -2333,9 +2333,10 @@ function finalizePlaceholderWarnings() {
 // 親スコープをプロトタイプ継承し、現在ノードのレイヤーを上書きで乗せる
 function extendScope(parentScope, layer) {
     var base = parentScope || (typeof globalScope !== "undefined" ? globalScope : {});
-    if (!layer) return base;
     var child = Object.create(base);
-    _.assign(child, layer); // 近いもの勝ち（シャドーイング）
+    if (layer) {
+        _.assign(child, layer); // 近いもの勝ち（シャドーイング）
+    }
     return child;
 }
 
@@ -3057,6 +3058,7 @@ var globalScope = (function(original) {
     function runInitDirectivesGlobally(root) {
         if (typeof globalScope === "undefined") { globalScope = {}; }
         var scopeStack = [ globalScope ];
+        var snapshotStack = [];
 
         forAllNodes_Recurse(
             root, null, -1,
@@ -3064,9 +3066,14 @@ var globalScope = (function(original) {
                 if (!node) return true;
 
                 var parentScope = scopeStack[scopeStack.length - 1];
-                var localScope = parentScope;
-                if (node.params) localScope = extendScope(localScope, node.params);
+                var localScope = extendScope(parentScope, node.params || {});
+                var before = {};
+                for (var key in localScope) {
+                    if (!Object.prototype.hasOwnProperty.call(localScope, key)) continue;
+                    before[key] = localScope[key];
+                }
                 scopeStack.push(localScope);
+                snapshotStack.push({ scope: localScope, parent: parentScope, before: before });
 
                 // UL の 「@init: <code>」のみ対応（コロン必須 / 子ULは読まない）
                 if (node.kind === kindUL) {
@@ -3125,7 +3132,26 @@ var globalScope = (function(original) {
                     }
                 }
             },
-            function () { scopeStack.pop(); }
+            function () {
+                var state = snapshotStack.pop();
+                var localScope = state.scope;
+                var parentScope = state.parent;
+                var before = state.before;
+
+                for (var diffKey in localScope) {
+                    if (!Object.prototype.hasOwnProperty.call(localScope, diffKey)) continue;
+                    if (diffKey.charAt(0) === "$") continue;
+                    if (typeof localScope[diffKey] === "function") continue;
+
+                    var isNew = !Object.prototype.hasOwnProperty.call(before, diffKey);
+                    var changed = isNew ? true : (before[diffKey] !== localScope[diffKey]);
+                    if (isNew || changed) {
+                        parentScope[diffKey] = localScope[diffKey];
+                    }
+                }
+
+                scopeStack.pop();
+            }
         );
 
         // children の null を掃除
@@ -3147,9 +3173,11 @@ var globalScope = (function(original) {
                 return;
             }
 
-            var localScope = currentScope || {};
-            if (node.params) {
-                localScope = extendScope(localScope, node.params);
+            var localScope = extendScope(currentScope || {}, node.params || {});
+            var scopeSnapshot = {};
+            for (var key in localScope) {
+                if (!Object.prototype.hasOwnProperty.call(localScope, key)) continue;
+                scopeSnapshot[key] = localScope[key];
             }
 
             if (node.children) {
@@ -3221,6 +3249,20 @@ var globalScope = (function(original) {
                     }
                     var cloned = cloneTemplateTree(templateNode);
                     visit(cloned, localScope);
+                }
+            }
+
+            if (currentScope) {
+                for (var diffKey in localScope) {
+                    if (!Object.prototype.hasOwnProperty.call(localScope, diffKey)) continue;
+                    if (diffKey.charAt(0) === "$") continue;
+                    if (typeof localScope[diffKey] === "function") continue;
+
+                    var isNew = !Object.prototype.hasOwnProperty.call(scopeSnapshot, diffKey);
+                    var changed = isNew ? true : (scopeSnapshot[diffKey] !== localScope[diffKey]);
+                    if (isNew || changed) {
+                        currentScope[diffKey] = localScope[diffKey];
+                    }
                 }
             }
         }
