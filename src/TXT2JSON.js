@@ -505,6 +505,19 @@ var confFileName = "conf.yml";
 })();
 conf = readConfigFile(confFileName);
 
+// 一番上の階層の upper snake case なプロパティをシートから閲覧できるようにする
+var globalScope = (function(original) {
+    if (typeof original === "undefined") return {};
+
+    var keys = _.keys(original);
+    var filteredKeys = _.filter(keys, function(key) {
+        return /^[A-Z0-9_]+$/.test(key);
+    });
+    var filtered = _.pick(original, filteredKeys);
+
+    return filtered;
+})(conf);
+
 var entryFilePath = filePath;
 var entryProject = fso.GetParentFolderName(entryFilePath);
 var entryProjectFromRoot = CL.getRelativePath(conf.$rootDirectory, entryProject);
@@ -2604,20 +2617,6 @@ function evaluateInScope(expr, scope) {
     var func = new Function(keys.join(","), "return " + expr + ";");
     return func.apply(null, values);
 }
-
-// 一番上の階層の upper snake case なプロパティをシートから閲覧できるようにする
-var globalScope = (function(original) {
-    if (typeof original === "undefined") return {};
-
-    var keys = _.keys(original);
-    var filteredKeys = _.filter(keys, function(key) {
-        return /^[A-Z0-9_]+$/.test(key);
-    });
-    var filtered = _.pick(original, filteredKeys);
-
-    return filtered;
-})(conf);
-//printJSON(globalScope);
 
 // テンプレート埋め込み
 // まずはすべてのノードについて調べ、親に登録
