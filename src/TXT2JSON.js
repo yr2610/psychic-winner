@@ -3430,6 +3430,10 @@ var globalScope = (function(original) {
         // 変数展開（共通 evaluator）
         {
             // 呼び出し地点のスコープに引数を最上段で重ねる
+            if (typeof parameters === "string") {
+                var errorMessage = "テンプレート'" + templateName + "'では文字列引数は使用できません。";
+                throw new TemplateError(errorMessage, targetNode);
+            }
             if (!parameters || typeof parameters !== "object") parameters = {};
             var parametersScopeTop = extendScope(callSiteScope, parameters);
 
