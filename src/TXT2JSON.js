@@ -318,7 +318,8 @@ function computeRootId() {
     // root.children を基に hash を求める
     //var k = JSON.stringify(root.children);
     var k = _.values(srcTexts).join("\n");
-    
+    k = prependGlobalScopeForHash(k);
+
     //var startTime = performance.now();
 //    var shaObj = new jsSHA("SHA-256", "TEXT", { encoding: "UTF8" });
 //    shaObj.update(k);
@@ -1794,6 +1795,39 @@ function getSHA1Hash(input) {
     return getHash(crypto, input);
 }
 
+function computeGlobalScopeHashPrefix() {
+    if (typeof globalScope === "undefined" || !globalScope) {
+        return "";
+    }
+
+    var keys = _.keys(globalScope);
+    if (!keys || keys.length === 0) {
+        return "";
+    }
+
+    keys.sort();
+
+    var normalized = {};
+    for (var i = 0; i < keys.length; i++) {
+        normalized[keys[i]] = globalScope[keys[i]];
+    }
+
+    return JSON.stringify(normalized);
+}
+
+function prependGlobalScopeForHash(text) {
+    var prefix = computeGlobalScopeHashPrefix();
+    if (!prefix) {
+        return text;
+    }
+
+    if (text === undefined || text === null || text === "") {
+        return prefix;
+    }
+
+    return prefix + "\n" + text;
+}
+
 // preprocess 後、 id 付与後のソーステキストをシートごとにhashで持っておく
 var parsedSheetNodeInfos = [];
 var reusedSheetNames = {};
@@ -1823,9 +1857,10 @@ var srcTexts;   // XXX: root.id 用に保存しておく…
 
     _.forEach(root.children, function(v, index) {
         var srcSheetText = result[v.id];
+        var hashTargetText = prependGlobalScopeForHash(srcSheetText);
 
         //v.srcHash = getSHA1Hash(srcSheetText);
-        v.srcHash = getMD5Hash(srcSheetText);
+        v.srcHash = getMD5Hash(hashTargetText);
 
         function getParsedSheetNode(sheetNode) {
             if (!lastParsedRoot) {
