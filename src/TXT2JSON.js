@@ -2719,8 +2719,20 @@ function evaluateInScope(expr, scope) {
         }
         if (!_.isUndefined(currentParameters)) {
             var scopeCursor = currentParameters;
+            var extractLayer = (typeof extractOwnScopeLayer === "function")
+                ? extractOwnScopeLayer
+                : function(scope) {
+                    var layer = {};
+                    for (var key in scope) {
+                        if (!Object.prototype.hasOwnProperty.call(scope, key)) {
+                            continue;
+                        }
+                        layer[key] = scope[key];
+                    }
+                    return layer;
+                };
             while (scopeCursor && scopeCursor !== Object.prototype) {
-                var ownLayer = extractOwnScopeLayer(scopeCursor);
+                var ownLayer = extractLayer(scopeCursor);
                 if (!_.isUndefined(ownLayer)) {
                     _.defaults(referableParams, ownLayer);
                 }
