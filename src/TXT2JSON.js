@@ -3562,6 +3562,34 @@ function evaluateInScope(expr, scope) {
                 function(){ tplStack.pop(); }
             );
             shrinkChildrenArray(templateRoot, null, -1);
+
+            (function expandInlineParamArraysInTemplate() {
+                var scopeStack = [ parametersScopeTop ];
+                forAllNodes_Recurse(
+                    templateRoot, null, -1,
+                    function(n, p, i) {
+                        if (!n) return true;
+
+                        var parentScope = scopeStack[scopeStack.length - 1];
+                        var inheritedLayer = getInheritedScopeLayer(n) || {};
+                        var localScope = extendScope(parentScope, inheritedLayer);
+                        scopeStack.push(localScope);
+
+                        var trimmed = n.text && n.text.trim();
+                        var inlineMatch = trimmed && trimmed.match(/^\*([A-Za-z_]\w*)$/);
+                        if (inlineMatch) {
+                            try {
+                                expandInlineParamArray(n, i, inlineMatch[1], localScope);
+                            } catch (e) {
+                                if (_.isUndefined(e.node) || _.isUndefined(e.errorMessage)) throw e;
+                                templateError(e.errorMessage, e.node);
+                            }
+                        }
+                    },
+                    function() { scopeStack.pop(); }
+                );
+            })();
+            shrinkChildrenArray(templateRoot, null, -1);
         }
 
         // template 内の template 呼び出し（ネスト展開）
