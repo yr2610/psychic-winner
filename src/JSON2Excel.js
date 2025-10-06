@@ -437,18 +437,19 @@ else {
 // hash 情報取得
 var sheetHashSheetName = "sheetHash.json"
 var sheetHashSheetData = {};
-var sheetHashes = {};
+var previousSheetHashes = {};
+var nextSheetHashes = {};
 var previousGlobalScopeHash = "";
 var sheetHashSheet = findSheetByName(book, sheetHashSheetName);
 if (sheetHashSheet) {
     sheetHashSheetData = CL.ReadJSONFromSheet(sheetHashSheet) || {};
 
     if (sheetHashSheetData.sheetHashes) {
-        sheetHashes = sheetHashSheetData.sheetHashes;
+        previousSheetHashes = sheetHashSheetData.sheetHashes;
         previousGlobalScopeHash = sheetHashSheetData.globalScopeHash || "";
     }
     else {
-        sheetHashes = sheetHashSheetData;
+        previousSheetHashes = sheetHashSheetData;
     }
 }
 else {
@@ -503,14 +504,14 @@ var hasGlobalScopeChanged = previousGlobalScopeHash !== currentGlobalScopeHash;
     var sheetsToDelete = [];
 
     if (hasGlobalScopeChanged) {
-        sheetsToDelete = _.transform(_.keys(sheetHashes), function(result, id) {
+        sheetsToDelete = _.transform(_.keys(previousSheetHashes), function(result, id) {
             result.push("#" + id);
         }, []);
     }
     else {
         _.forEach(root.children, function(nodeH1) {
             var id = nodeH1.id;
-            if (id in sheetHashes && sheetHashes[id] != newSheetHashes[id]) {
+            if (id in previousSheetHashes && previousSheetHashes[id] != newSheetHashes[id]) {
                 sheetsToDelete.push("#" + id);
             }
         });
@@ -542,16 +543,15 @@ for (var i = 0; i < root.children.length; i++) {
     excel.ScreenUpdating = false;
 
     var newHash = newSheetHashes[nodeH1.id];
+    nextSheetHashes[nodeH1.id] = newHash;
 
-    if (!hasGlobalScopeChanged && nodeH1.id in sheetHashes && sheetHashes[nodeH1.id] == newHash) {
+    if (!hasGlobalScopeChanged && nodeH1.id in previousSheetHashes && previousSheetHashes[nodeH1.id] == newHash) {
         // 末尾に移動
         var sheet = book.Worksheets("#" + nodeH1.id);
         sheet.Move(null, lastSheet);
         lastSheet = sheet;
         continue;
     }
-
-    sheetHashes[nodeH1.id] = newHash;
 
     templateSheet.Copy(null, lastSheet);
     lastSheet = lastSheet.Next;
@@ -581,7 +581,7 @@ excel.StatusBar = false;
 excel.ScreenUpdating = false;
 
 CL.writeJSONToSheet({
-    sheetHashes: sheetHashes,
+    sheetHashes: nextSheetHashes,
     globalScopeHash: currentGlobalScopeHash
 }, sheetHashSheet);
 
@@ -599,16 +599,20 @@ for (var i = 0; i < root.children.length; i++) {
 }
 
 (function() {
-    var sheetsToDelete = _.keys(sheetHashes);
-    var usedSheets = _.transform(root.children, function(result, nodeH1) {
-        result.push(nodeH1.id);
-    });
+    var removedSheetIds;
+    if (hasGlobalScopeChanged) {
+        removedSheetIds = [];
+    }
+    else {
+        removedSheetIds = _.difference(
+            _.keys(previousSheetHashes),
+            _.keys(nextSheetHashes)
+        );
+    }
 
-    sheetsToDelete = _.difference(sheetsToDelete, usedSheets);
-
-    sheetsToDelete = _.transform(sheetsToDelete, function(result, n) {
-        result.push("#" + n);
-    });
+    var sheetsToDelete = _.transform(removedSheetIds, function(result, id) {
+        result.push("#" + id);
+    }, []);
 
     // hash情報シートを削除
     sheetsToDelete.push(sheetHashSheetName);
