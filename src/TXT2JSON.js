@@ -1867,7 +1867,7 @@ function getSHA1Hash(input) {
     return getHash(crypto, input);
 }
 
-function computeGlobalScopeHashPrefix() {
+function computeGlobalScopeHashSource() {
     if (typeof globalScope === "undefined" || !globalScope) {
         return "";
     }
@@ -1887,17 +1887,13 @@ function computeGlobalScopeHashPrefix() {
     return JSON.stringify(normalized);
 }
 
-function prependGlobalScopeForHash(text) {
-    var prefix = computeGlobalScopeHashPrefix();
-    if (!prefix) {
-        return text;
+function computeGlobalScopeHash() {
+    var source = computeGlobalScopeHashSource();
+    if (!source) {
+        return "";
     }
 
-    if (text === undefined || text === null || text === "") {
-        return prefix;
-    }
-
-    return prefix + "\n" + text;
+    return getMD5Hash(source);
 }
 
 // preprocess 後、 id 付与後のソーステキストをシートごとにhashで持っておく
@@ -1905,6 +1901,10 @@ var parsedSheetNodeInfos = [];
 var reusedSheetNames = {};
 var srcTexts;   // XXX: root.id 用に保存しておく…
 (function() {
+    var currentGlobalScopeHash = computeGlobalScopeHash();
+    root.globalScopeHash = currentGlobalScopeHash;
+    var shouldForceReparseByGlobalScope = lastParsedRoot && lastParsedRoot.globalScopeHash !== currentGlobalScopeHash;
+
     var children = root.children;
     var src = srcLines.__a;
     var result = {};
@@ -1929,7 +1929,7 @@ var srcTexts;   // XXX: root.id 用に保存しておく…
 
     _.forEach(root.children, function(v, index) {
         var srcSheetText = result[v.id];
-        var hashTargetText = prependGlobalScopeForHash(srcSheetText);
+        var hashTargetText = (srcSheetText === undefined || srcSheetText === null) ? "" : srcSheetText;
 
         //v.srcHash = getSHA1Hash(srcSheetText);
         v.srcHash = getMD5Hash(hashTargetText);
@@ -1947,7 +1947,7 @@ var srcTexts;   // XXX: root.id 用に保存しておく…
             }
         }
 
-        var parsedSheetNode = getParsedSheetNode(v);
+        var parsedSheetNode = shouldForceReparseByGlobalScope ? null : getParsedSheetNode(v);
         var sheetNameForWarnings = getPlaceholderWarningSheetName(v);
 
         // srcHash が同じ sheetNode があれば、そのまま再利用
