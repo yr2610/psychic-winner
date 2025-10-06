@@ -495,6 +495,53 @@ includePath.push(fso.GetParentFolderName(filePath));
 // FIXME: 廃止予定
 loadGlobalConfig();
 
+function readVarsFile(varsFileName) {
+    var varsFilePath = fso.BuildPath(fso.GetParentFolderName(filePath), varsFileName);
+    if (!fso.FileExists(varsFilePath)) {
+        return {};
+    }
+
+    var data = CL.readYAMLFile(varsFilePath);
+    if (!data) {
+        return {};
+    }
+
+    function processIncludeFiles(target, baseFile) {
+        if (!target || typeof target !== "object") {
+            return;
+        }
+
+        if (_.isUndefined(target.$include)) {
+            return;
+        }
+
+        var includeFiles = target.$include;
+        delete target.$include;
+
+        var baseDirectory = fso.GetParentFolderName(baseFile);
+        _.forEach(includeFiles, function(value) {
+            var includeFilePath;
+            if (typeof value === "string" && value.charAt(0) === "/") {
+                var rootDirectory = conf && conf.$rootDirectory;
+                if (!rootDirectory) {
+                    rootDirectory = baseDirectory;
+                }
+                includeFilePath = fso.BuildPath(rootDirectory, value.slice(1));
+            } else {
+                includeFilePath = fso.BuildPath(baseDirectory, value);
+            }
+
+            var includeData = CL.readYAMLFile(includeFilePath) || {};
+            processIncludeFiles(includeData, includeFilePath);
+            _.defaults(target, includeData);
+        });
+    }
+
+    processIncludeFiles(data, varsFilePath);
+
+    return data;
+}
+
 var confFileName = "conf.yml";
 (function() {
     var baseName = fso.GetBaseName(filePath);
@@ -506,7 +553,7 @@ var confFileName = "conf.yml";
 conf = readConfigFile(confFileName);
 
 // 一番上の階層の upper snake case なプロパティをシートから閲覧できるようにする
-var globalScope = (function(original) {
+var confGlobalScope = (function(original) {
     if (typeof original === "undefined") return {};
 
     var keys = _.keys(original);
@@ -517,6 +564,16 @@ var globalScope = (function(original) {
 
     return filtered;
 })(conf);
+
+var varsFileName = "vars.yml";
+(function() {
+    var baseName = fso.GetBaseName(filePath);
+    baseName = baseName.replace(/_index$/, "");
+    if (baseName != "index") {
+        varsFileName = baseName + "_" + varsFileName;
+    }
+})();
+var globalScope = _.extend({}, confGlobalScope, readVarsFile(varsFileName));
 
 var entryFilePath = filePath;
 var entryProject = fso.GetParentFolderName(entryFilePath);
@@ -2654,8 +2711,20 @@ function evaluateInScope(expr, scope) {
         }
         if (!_.isUndefined(currentParameters)) {
             var scopeCursor = currentParameters;
+            var extractLayer = (typeof extractOwnScopeLayer === "function")
+                ? extractOwnScopeLayer
+                : function(scope) {
+                    var layer = {};
+                    for (var key in scope) {
+                        if (!Object.prototype.hasOwnProperty.call(scope, key)) {
+                            continue;
+                        }
+                        layer[key] = scope[key];
+                    }
+                    return layer;
+                };
             while (scopeCursor && scopeCursor !== Object.prototype) {
-                var ownLayer = extractOwnScopeLayer(scopeCursor);
+                var ownLayer = extractLayer(scopeCursor);
                 if (!_.isUndefined(ownLayer)) {
                     _.defaults(referableParams, ownLayer);
                 }
