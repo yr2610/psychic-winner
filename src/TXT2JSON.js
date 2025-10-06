@@ -2462,10 +2462,16 @@ function getInheritedScopeLayer(node) {
     if (!node) {
         return null;
     }
-    if (node._initScopeLayer) {
+    var hasParams = !!node.params;
+    var hasInitLayer = !!node._initScopeLayer;
+
+    if (hasParams && hasInitLayer) {
+        return _.assign({}, node.params, node._initScopeLayer);
+    }
+    if (hasInitLayer) {
         return node._initScopeLayer;
     }
-    if (node.params) {
+    if (hasParams) {
         return node.params;
     }
     return null;
