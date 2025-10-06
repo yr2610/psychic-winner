@@ -436,10 +436,20 @@ else {
 
 // hash 情報取得
 var sheetHashSheetName = "sheetHash.json"
+var sheetHashSheetData = {};
 var sheetHashes = {};
+var previousGlobalScopeHash = "";
 var sheetHashSheet = findSheetByName(book, sheetHashSheetName);
 if (sheetHashSheet) {
-    sheetHashes = CL.ReadJSONFromSheet(sheetHashSheet);
+    sheetHashSheetData = CL.ReadJSONFromSheet(sheetHashSheet) || {};
+
+    if (sheetHashSheetData.sheetHashes) {
+        sheetHashes = sheetHashSheetData.sheetHashes;
+        previousGlobalScopeHash = sheetHashSheetData.globalScopeHash || "";
+    }
+    else {
+        sheetHashes = sheetHashSheetData;
+    }
 }
 else {
     sheetHashSheet = book.Worksheets.Add();
@@ -485,17 +495,26 @@ function getSheetHash(nodeH1) {
 }
 
 var newSheetHashes = getSheetsHash(root.children);
+var currentGlobalScopeHash = root.globalScopeHash || "";
+var hasGlobalScopeChanged = previousGlobalScopeHash !== currentGlobalScopeHash;
 
 // 更新が必要なシートを削除
 (function() {
     var sheetsToDelete = [];
 
-    _.forEach(root.children, function(nodeH1) {
-        var id = nodeH1.id;
-        if (id in sheetHashes && sheetHashes[id] != newSheetHashes[id]) {
-            sheetsToDelete.push("#" + id);
-        }
-    });
+    if (hasGlobalScopeChanged) {
+        sheetsToDelete = _.transform(_.keys(sheetHashes), function(result, id) {
+            result.push("#" + id);
+        }, []);
+    }
+    else {
+        _.forEach(root.children, function(nodeH1) {
+            var id = nodeH1.id;
+            if (id in sheetHashes && sheetHashes[id] != newSheetHashes[id]) {
+                sheetsToDelete.push("#" + id);
+            }
+        });
+    }
 
     if (_.isEmpty(sheetsToDelete)) {
         return;
@@ -524,7 +543,7 @@ for (var i = 0; i < root.children.length; i++) {
 
     var newHash = newSheetHashes[nodeH1.id];
 
-    if (nodeH1.id in sheetHashes && sheetHashes[nodeH1.id] == newHash) {
+    if (!hasGlobalScopeChanged && nodeH1.id in sheetHashes && sheetHashes[nodeH1.id] == newHash) {
         // 末尾に移動
         var sheet = book.Worksheets("#" + nodeH1.id);
         sheet.Move(null, lastSheet);
@@ -561,7 +580,10 @@ excel.ScreenUpdating = true;
 excel.StatusBar = false;
 excel.ScreenUpdating = false;
 
-CL.writeJSONToSheet(sheetHashes, sheetHashSheet);
+CL.writeJSONToSheet({
+    sheetHashes: sheetHashes,
+    globalScopeHash: currentGlobalScopeHash
+}, sheetHashSheet);
 
 // cache にシート名を id で書き出して save
 book.Save();
