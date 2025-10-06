@@ -32,6 +32,8 @@ var DROP_KEYS_LIST = [
     "$isOdd",
     "$isEven",
 
+    "_initScopeLayer",
+
     "marker"    // 削除済みだけど一応
 ];
 
