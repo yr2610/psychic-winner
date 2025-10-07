@@ -1900,6 +1900,11 @@ function computeGlobalScopeHash() {
 var parsedSheetNodeInfos = [];
 var reusedSheetNames = {};
 var srcTexts;   // XXX: root.id 用に保存しておく…
+var previousParsedSheetNodesById = {};
+var previousSheetSrcHashesById = {};
+var nextSheetSrcHashesById = {};
+var removedNodesFromLastParse = [];
+var hasOwn = Object.prototype.hasOwnProperty;
 (function() {
     var currentGlobalScopeHash = computeGlobalScopeHash();
     root.globalScopeHash = currentGlobalScopeHash;
@@ -1919,11 +1924,20 @@ var srcTexts;   // XXX: root.id 用に保存しておく…
     }
     srcTexts = result;
 
-    // root には存在せず lastParsedRoot には存在するノードを抽出
-    var removedNodesFromLastParse;
-    if (lastParsedRoot) {
-        removedNodesFromLastParse = _.filter(lastParsedRoot.children, function(node) {
-            return !_.some(root.children, function(rootNode) { return rootNode.id === node.id; });
+    previousParsedSheetNodesById = {};
+    previousSheetSrcHashesById = {};
+    nextSheetSrcHashesById = {};
+
+    if (lastParsedRoot && _.isArray(lastParsedRoot.children)) {
+        _.forEach(lastParsedRoot.children, function(node) {
+            if (!node || node.id == null) {
+                return;
+            }
+            var key = String(node.id);
+            previousParsedSheetNodesById[key] = node;
+            if (node.srcHash) {
+                previousSheetSrcHashesById[key] = node.srcHash;
+            }
         });
     }
 
@@ -1934,20 +1948,16 @@ var srcTexts;   // XXX: root.id 用に保存しておく…
         //v.srcHash = getSHA1Hash(srcSheetText);
         v.srcHash = getMD5Hash(hashTargetText);
 
-        function getParsedSheetNode(sheetNode) {
-            if (!lastParsedRoot) {
-                return;
-            }
-            var parsedSheetNode = _.find(lastParsedRoot.children, { id: sheetNode.id });
-            if (!parsedSheetNode) {
-                return;
-            }
-            if (parsedSheetNode.srcHash && parsedSheetNode.srcHash == sheetNode.srcHash) {
-                return parsedSheetNode;
+        var sheetIdKey = String(v.id);
+        nextSheetSrcHashesById[sheetIdKey] = v.srcHash;
+
+        var parsedSheetNode = null;
+        if (!shouldForceReparseByGlobalScope) {
+            var candidate = previousParsedSheetNodesById[sheetIdKey];
+            if (candidate && previousSheetSrcHashesById[sheetIdKey] === v.srcHash) {
+                parsedSheetNode = candidate;
             }
         }
-
-        var parsedSheetNode = shouldForceReparseByGlobalScope ? null : getParsedSheetNode(v);
         var sheetNameForWarnings = getPlaceholderWarningSheetName(v);
 
         // srcHash が同じ sheetNode があれば、そのまま再利用
@@ -1961,6 +1971,19 @@ var srcTexts;   // XXX: root.id 用に保存しておく…
             root.children[index] = null;
         }
     });
+
+    if (lastParsedRoot && _.isArray(lastParsedRoot.children)) {
+        removedNodesFromLastParse = _.filter(lastParsedRoot.children, function(node) {
+            if (!node || node.id == null) {
+                return false;
+            }
+            var key = String(node.id);
+            return !hasOwn.call(nextSheetSrcHashesById, key);
+        });
+    }
+    else {
+        removedNodesFromLastParse = [];
+    }
 
     // 一旦削除する
     // 「parsedSheet に置き換えする node は処理しない」というのをすべての処理に入れるというのは修正コストが高すぎるので
