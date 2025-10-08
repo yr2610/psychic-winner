@@ -2454,6 +2454,22 @@ function extendScope(parentScope, layer) {
     return child;
 }
 
+function getGlobalThisPolyfill() {
+    if (typeof globalThis !== "undefined") {
+        return globalThis;
+    }
+    if (typeof self !== "undefined") {
+        return self;
+    }
+    if (typeof window !== "undefined") {
+        return window;
+    }
+    if (typeof global !== "undefined") {
+        return global;
+    }
+    return Function("return this")();
+}
+
 function extractOwnScopeLayer(scope) {
     var layer = {};
     for (var key in scope) {
@@ -2464,6 +2480,16 @@ function extractOwnScopeLayer(scope) {
     }
     return layer;
 }
+
+(function() {
+    var globalObj = getGlobalThisPolyfill();
+    if (!globalObj) {
+        return;
+    }
+    if (typeof globalObj.extractOwnScopeLayer !== "function") {
+        globalObj.extractOwnScopeLayer = extractOwnScopeLayer;
+    }
+})();
 
 function getInheritedScopeLayer(node) {
     if (!node) {
@@ -2726,8 +2752,20 @@ function evaluateInScope(expr, scope) {
         }
         if (!_.isUndefined(currentParameters)) {
             var scopeCursor = currentParameters;
+            var extractLayer = (typeof extractOwnScopeLayer === "function")
+                ? extractOwnScopeLayer
+                : function(scope) {
+                    var layer = {};
+                    for (var key in scope) {
+                        if (!Object.prototype.hasOwnProperty.call(scope, key)) {
+                            continue;
+                        }
+                        layer[key] = scope[key];
+                    }
+                    return layer;
+                };
             while (scopeCursor && scopeCursor !== Object.prototype) {
-                var ownLayer = extractOwnScopeLayer(scopeCursor);
+                var ownLayer = extractLayer(scopeCursor);
                 if (!_.isUndefined(ownLayer)) {
                     _.defaults(referableParams, ownLayer);
                 }
