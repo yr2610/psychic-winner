@@ -436,21 +436,10 @@ else {
 
 // hash 情報取得
 var sheetHashSheetName = "sheetHash.json"
-var sheetHashSheetData = {};
-var previousSheetHashes = {};
-var nextSheetHashes = {};
-var previousGlobalScopeHash = "";
+var sheetHashes = {};
 var sheetHashSheet = findSheetByName(book, sheetHashSheetName);
 if (sheetHashSheet) {
-    sheetHashSheetData = CL.ReadJSONFromSheet(sheetHashSheet) || {};
-
-    if (sheetHashSheetData.sheetHashes) {
-        previousSheetHashes = sheetHashSheetData.sheetHashes;
-        previousGlobalScopeHash = sheetHashSheetData.globalScopeHash || "";
-    }
-    else {
-        previousSheetHashes = sheetHashSheetData;
-    }
+    sheetHashes = CL.ReadJSONFromSheet(sheetHashSheet);
 }
 else {
     sheetHashSheet = book.Worksheets.Add();
@@ -496,26 +485,17 @@ function getSheetHash(nodeH1) {
 }
 
 var newSheetHashes = getSheetsHash(root.children);
-var currentGlobalScopeHash = root.globalScopeHash || "";
-var hasGlobalScopeChanged = previousGlobalScopeHash !== currentGlobalScopeHash;
 
 // 更新が必要なシートを削除
 (function() {
     var sheetsToDelete = [];
 
-    if (hasGlobalScopeChanged) {
-        sheetsToDelete = _.transform(_.keys(previousSheetHashes), function(result, id) {
-            result.push("#" + id);
-        }, []);
-    }
-    else {
-        _.forEach(root.children, function(nodeH1) {
-            var id = nodeH1.id;
-            if (id in previousSheetHashes && previousSheetHashes[id] != newSheetHashes[id]) {
-                sheetsToDelete.push("#" + id);
-            }
-        });
-    }
+    _.forEach(root.children, function(nodeH1) {
+        var id = nodeH1.id;
+        if (id in sheetHashes && sheetHashes[id] != newSheetHashes[id]) {
+            sheetsToDelete.push("#" + id);
+        }
+    });
 
     if (_.isEmpty(sheetsToDelete)) {
         return;
@@ -543,15 +523,16 @@ for (var i = 0; i < root.children.length; i++) {
     excel.ScreenUpdating = false;
 
     var newHash = newSheetHashes[nodeH1.id];
-    nextSheetHashes[nodeH1.id] = newHash;
 
-    if (!hasGlobalScopeChanged && nodeH1.id in previousSheetHashes && previousSheetHashes[nodeH1.id] == newHash) {
+    if (nodeH1.id in sheetHashes && sheetHashes[nodeH1.id] == newHash) {
         // 末尾に移動
         var sheet = book.Worksheets("#" + nodeH1.id);
         sheet.Move(null, lastSheet);
         lastSheet = sheet;
         continue;
     }
+
+    sheetHashes[nodeH1.id] = newHash;
 
     templateSheet.Copy(null, lastSheet);
     lastSheet = lastSheet.Next;
@@ -580,10 +561,7 @@ excel.ScreenUpdating = true;
 excel.StatusBar = false;
 excel.ScreenUpdating = false;
 
-CL.writeJSONToSheet({
-    sheetHashes: nextSheetHashes,
-    globalScopeHash: currentGlobalScopeHash
-}, sheetHashSheet);
+CL.writeJSONToSheet(sheetHashes, sheetHashSheet);
 
 // cache にシート名を id で書き出して save
 book.Save();
@@ -599,20 +577,16 @@ for (var i = 0; i < root.children.length; i++) {
 }
 
 (function() {
-    var removedSheetIds;
-    if (hasGlobalScopeChanged) {
-        removedSheetIds = [];
-    }
-    else {
-        removedSheetIds = _.difference(
-            _.keys(previousSheetHashes),
-            _.keys(nextSheetHashes)
-        );
-    }
+    var sheetsToDelete = _.keys(sheetHashes);
+    var usedSheets = _.transform(root.children, function(result, nodeH1) {
+        result.push(nodeH1.id);
+    });
 
-    var sheetsToDelete = _.transform(removedSheetIds, function(result, id) {
-        result.push("#" + id);
-    }, []);
+    sheetsToDelete = _.difference(sheetsToDelete, usedSheets);
+
+    sheetsToDelete = _.transform(sheetsToDelete, function(result, n) {
+        result.push("#" + n);
+    });
 
     // hash情報シートを削除
     sheetsToDelete.push(sheetHashSheetName);
