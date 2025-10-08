@@ -320,7 +320,8 @@ function computeRootId() {
     // root.children を基に hash を求める
     //var k = JSON.stringify(root.children);
     var k = _.values(srcTexts).join("\n");
-    k = prependGlobalScopeForHash(k);
+    var scopeHash = root.globalScopeHash || "";
+    k += scopeHash;
 
     //var startTime = performance.now();
 //    var shaObj = new jsSHA("SHA-256", "TEXT", { encoding: "UTF8" });
@@ -575,7 +576,10 @@ var varsFileName = "vars.yml";
         varsFileName = baseName + "_" + varsFileName;
     }
 })();
-var globalScope = _.extend({}, confGlobalScope, readVarsFile(varsFileName));
+var initialGlobalScope = _.extend({}, confGlobalScope, readVarsFile(varsFileName));
+// グローバルスコープはパース途中で @init 等によって上書きされる可能性があるため、
+// 再利用判定用のハッシュは初期状態のスナップショットから計算する。
+var globalScope = _.cloneDeep(initialGlobalScope);
 
 var entryFilePath = filePath;
 var entryProject = fso.GetParentFolderName(entryFilePath);
@@ -1867,12 +1871,12 @@ function getSHA1Hash(input) {
     return getHash(crypto, input);
 }
 
-function computeGlobalScopeHashPrefix() {
-    if (typeof globalScope === "undefined" || !globalScope) {
+function getNormalizedInitialGlobalScopeJSON() {
+    if (typeof initialGlobalScope === "undefined" || !initialGlobalScope) {
         return "";
     }
 
-    var keys = _.keys(globalScope);
+    var keys = _.keys(initialGlobalScope);
     if (!keys || keys.length === 0) {
         return "";
     }
@@ -1881,23 +1885,19 @@ function computeGlobalScopeHashPrefix() {
 
     var normalized = {};
     for (var i = 0; i < keys.length; i++) {
-        normalized[keys[i]] = globalScope[keys[i]];
+        normalized[keys[i]] = initialGlobalScope[keys[i]];
     }
 
     return JSON.stringify(normalized);
 }
 
-function prependGlobalScopeForHash(text) {
-    var prefix = computeGlobalScopeHashPrefix();
-    if (!prefix) {
-        return text;
+function computeInitialGlobalScopeHash() {
+    var normalized = getNormalizedInitialGlobalScopeJSON();
+    if (!normalized) {
+        return "";
     }
 
-    if (text === undefined || text === null || text === "") {
-        return prefix;
-    }
-
-    return prefix + "\n" + text;
+    return getMD5Hash(normalized);
 }
 
 // preprocess 後、 id 付与後のソーステキストをシートごとにhashで持っておく
@@ -1919,6 +1919,20 @@ var srcTexts;   // XXX: root.id 用に保存しておく…
     }
     srcTexts = result;
 
+    // NOTE: runInitDirectivesGlobally() may mutate globalScope later in the
+    // pipeline. The hash is intentionally captured from the initial snapshot
+    // (conf/vars 読み込み直後の initialGlobalScope) so that reuse 判定が
+    // 依存する設定の変化を正確に検知できる。
+    root.globalScopeHash = computeInitialGlobalScopeHash();
+
+    if (lastParsedRoot && lastParsedRoot.children && lastParsedRoot.globalScopeHash !== root.globalScopeHash) {
+        _.forEach(lastParsedRoot.children, function(child) {
+            if (child) {
+                child.srcHash = null;
+            }
+        });
+    }
+
     // root には存在せず lastParsedRoot には存在するノードを抽出
     var removedNodesFromLastParse;
     if (lastParsedRoot) {
@@ -1929,7 +1943,7 @@ var srcTexts;   // XXX: root.id 用に保存しておく…
 
     _.forEach(root.children, function(v, index) {
         var srcSheetText = result[v.id];
-        var hashTargetText = prependGlobalScopeForHash(srcSheetText);
+        var hashTargetText = (srcSheetText === undefined || srcSheetText === null) ? "" : srcSheetText;
 
         //v.srcHash = getSHA1Hash(srcSheetText);
         v.srcHash = getMD5Hash(hashTargetText);
