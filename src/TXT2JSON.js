@@ -1867,7 +1867,7 @@ function getSHA1Hash(input) {
     return getHash(crypto, input);
 }
 
-function computeGlobalScopeHashSource() {
+function computeGlobalScopeHashPrefix() {
     if (typeof globalScope === "undefined" || !globalScope) {
         return "";
     }
@@ -1887,29 +1887,24 @@ function computeGlobalScopeHashSource() {
     return JSON.stringify(normalized);
 }
 
-function computeGlobalScopeHash() {
-    var source = computeGlobalScopeHashSource();
-    if (!source) {
-        return "";
+function prependGlobalScopeForHash(text) {
+    var prefix = computeGlobalScopeHashPrefix();
+    if (!prefix) {
+        return text;
     }
 
-    return getMD5Hash(source);
+    if (text === undefined || text === null || text === "") {
+        return prefix;
+    }
+
+    return prefix + "\n" + text;
 }
 
 // preprocess 後、 id 付与後のソーステキストをシートごとにhashで持っておく
 var parsedSheetNodeInfos = [];
 var reusedSheetNames = {};
 var srcTexts;   // XXX: root.id 用に保存しておく…
-var previousParsedSheetNodesById = {};
-var previousSheetSrcHashesById = {};
-var nextSheetSrcHashesById = {};
-var removedNodesFromLastParse = [];
-var hasOwn = Object.prototype.hasOwnProperty;
 (function() {
-    var currentGlobalScopeHash = computeGlobalScopeHash();
-    root.globalScopeHash = currentGlobalScopeHash;
-    var shouldForceReparseByGlobalScope = lastParsedRoot && lastParsedRoot.globalScopeHash !== currentGlobalScopeHash;
-
     var children = root.children;
     var src = srcLines.__a;
     var result = {};
@@ -1924,40 +1919,35 @@ var hasOwn = Object.prototype.hasOwnProperty;
     }
     srcTexts = result;
 
-    previousParsedSheetNodesById = {};
-    previousSheetSrcHashesById = {};
-    nextSheetSrcHashesById = {};
-
-    if (lastParsedRoot && _.isArray(lastParsedRoot.children)) {
-        _.forEach(lastParsedRoot.children, function(node) {
-            if (!node || node.id == null) {
-                return;
-            }
-            var key = String(node.id);
-            previousParsedSheetNodesById[key] = node;
-            if (node.srcHash) {
-                previousSheetSrcHashesById[key] = node.srcHash;
-            }
+    // root には存在せず lastParsedRoot には存在するノードを抽出
+    var removedNodesFromLastParse;
+    if (lastParsedRoot) {
+        removedNodesFromLastParse = _.filter(lastParsedRoot.children, function(node) {
+            return !_.some(root.children, function(rootNode) { return rootNode.id === node.id; });
         });
     }
 
     _.forEach(root.children, function(v, index) {
         var srcSheetText = result[v.id];
-        var hashTargetText = (srcSheetText === undefined || srcSheetText === null) ? "" : srcSheetText;
+        var hashTargetText = prependGlobalScopeForHash(srcSheetText);
 
         //v.srcHash = getSHA1Hash(srcSheetText);
         v.srcHash = getMD5Hash(hashTargetText);
 
-        var sheetIdKey = String(v.id);
-        nextSheetSrcHashesById[sheetIdKey] = v.srcHash;
-
-        var parsedSheetNode = null;
-        if (!shouldForceReparseByGlobalScope) {
-            var candidate = previousParsedSheetNodesById[sheetIdKey];
-            if (candidate && previousSheetSrcHashesById[sheetIdKey] === v.srcHash) {
-                parsedSheetNode = candidate;
+        function getParsedSheetNode(sheetNode) {
+            if (!lastParsedRoot) {
+                return;
+            }
+            var parsedSheetNode = _.find(lastParsedRoot.children, { id: sheetNode.id });
+            if (!parsedSheetNode) {
+                return;
+            }
+            if (parsedSheetNode.srcHash && parsedSheetNode.srcHash == sheetNode.srcHash) {
+                return parsedSheetNode;
             }
         }
+
+        var parsedSheetNode = getParsedSheetNode(v);
         var sheetNameForWarnings = getPlaceholderWarningSheetName(v);
 
         // srcHash が同じ sheetNode があれば、そのまま再利用
@@ -1971,19 +1961,6 @@ var hasOwn = Object.prototype.hasOwnProperty;
             root.children[index] = null;
         }
     });
-
-    if (lastParsedRoot && _.isArray(lastParsedRoot.children)) {
-        removedNodesFromLastParse = _.filter(lastParsedRoot.children, function(node) {
-            if (!node || node.id == null) {
-                return false;
-            }
-            var key = String(node.id);
-            return !hasOwn.call(nextSheetSrcHashesById, key);
-        });
-    }
-    else {
-        removedNodesFromLastParse = [];
-    }
 
     // 一旦削除する
     // 「parsedSheet に置き換えする node は処理しない」というのをすべての処理に入れるというのは修正コストが高すぎるので
