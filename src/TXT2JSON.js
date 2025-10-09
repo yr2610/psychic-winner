@@ -320,7 +320,8 @@ function computeRootId() {
     // root.children を基に hash を求める
     //var k = JSON.stringify(root.children);
     var k = _.values(srcTexts).join("\n");
-    k = prependGlobalScopeForHash(k);
+    var scopeHash = root.globalScopeHash || "";
+    k += scopeHash;
 
     //var startTime = performance.now();
 //    var shaObj = new jsSHA("SHA-256", "TEXT", { encoding: "UTF8" });
@@ -1867,7 +1868,7 @@ function getSHA1Hash(input) {
     return getHash(crypto, input);
 }
 
-function computeGlobalScopeHashPrefix() {
+function getNormalizedGlobalScopeJSON() {
     if (typeof globalScope === "undefined" || !globalScope) {
         return "";
     }
@@ -1887,17 +1888,13 @@ function computeGlobalScopeHashPrefix() {
     return JSON.stringify(normalized);
 }
 
-function prependGlobalScopeForHash(text) {
-    var prefix = computeGlobalScopeHashPrefix();
-    if (!prefix) {
-        return text;
+function computeGlobalScopeHash() {
+    var normalized = getNormalizedGlobalScopeJSON();
+    if (!normalized) {
+        return "";
     }
 
-    if (text === undefined || text === null || text === "") {
-        return prefix;
-    }
-
-    return prefix + "\n" + text;
+    return getMD5Hash(normalized);
 }
 
 // preprocess 後、 id 付与後のソーステキストをシートごとにhashで持っておく
@@ -1919,6 +1916,21 @@ var srcTexts;   // XXX: root.id 用に保存しておく…
     }
     srcTexts = result;
 
+    // NOTE: runInitDirectivesGlobally() may mutate globalScope later in the
+    // pipeline, but those mutations only happen while expanding sheets that we
+    // are actively re-parsing. The hash is intentionally captured here so that
+    // it reflects the initial configuration state (conf/vars) that governs the
+    // reuse decision below.
+    root.globalScopeHash = computeGlobalScopeHash();
+
+    if (lastParsedRoot && lastParsedRoot.children && lastParsedRoot.globalScopeHash !== root.globalScopeHash) {
+        _.forEach(lastParsedRoot.children, function(child) {
+            if (child) {
+                child.srcHash = null;
+            }
+        });
+    }
+
     // root には存在せず lastParsedRoot には存在するノードを抽出
     var removedNodesFromLastParse;
     if (lastParsedRoot) {
@@ -1929,7 +1941,7 @@ var srcTexts;   // XXX: root.id 用に保存しておく…
 
     _.forEach(root.children, function(v, index) {
         var srcSheetText = result[v.id];
-        var hashTargetText = prependGlobalScopeForHash(srcSheetText);
+        var hashTargetText = (srcSheetText === undefined || srcSheetText === null) ? "" : srcSheetText;
 
         //v.srcHash = getSHA1Hash(srcSheetText);
         v.srcHash = getMD5Hash(hashTargetText);
