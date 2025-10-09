@@ -1916,6 +1916,11 @@ var srcTexts;   // XXX: root.id 用に保存しておく…
     }
     srcTexts = result;
 
+    // NOTE: runInitDirectivesGlobally() may mutate globalScope later in the
+    // pipeline, but those mutations only happen while expanding sheets that we
+    // are actively re-parsing. The hash is intentionally captured here so that
+    // it reflects the initial configuration state (conf/vars) that governs the
+    // reuse decision below.
     root.globalScopeHash = computeGlobalScopeHash();
 
     if (lastParsedRoot && lastParsedRoot.children && lastParsedRoot.globalScopeHash !== root.globalScopeHash) {
