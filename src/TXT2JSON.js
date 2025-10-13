@@ -748,61 +748,6 @@ function FindUidList(parent) {
     return node ? node.uidList : null;
 }
 
-// tableHeaders 内の ID で最小のものが一番左として連番で検索
-function getDataFromTableRow(srcData, parentNode, tableHeaderIds) {
-    // data を h1 の tableHeaders の番号に合わせて作り直す
-    var data = [];
-
-    // H1は確実に見つかるものとしてOK
-    var h1Node = FindParentNode(parentNode, function(node) {
-        return (node.kind === kindH && node.level === 1);
-    });
-
-    if (typeof tableHeaderIds === 'undefined') {
-        /**
-        // tableHeaders 内の ID で最小のものが一番左として連番の値
-        var minNumber = Infinity;
-        for (var i = 0; i < h1Node.tableHeaders.length; i++)
-        {
-            minNumber = Math.min(minNumber, h1Node.tableHeaders[i].id);
-        }
-        /*/
-        // 「必ず 1 から始まる連番」の方が仕様として素直ですっきりしているか
-        var minNumber = 1;
-        /**/
-
-        tableHeaderIds = [];
-        for (var i = 0; i < srcData.length; i++) {
-            tableHeaderIds[i] = minNumber + i;
-        }
-    }
-    for (var i = 0; i < srcData.length; i++)
-    {
-        if (!srcData[i])
-        {
-            continue;
-        }
-        var number = tableHeaderIds[i];
-        if (typeof number === 'undefined')
-        {
-            return null;
-        }
-        var headerIndex = h1Node.tableHeaders.findIndex(function(element, index, array)
-        {
-            return (element.id === number);
-        });
-
-        if (headerIndex === -1)
-        {
-            return null;
-        }
-        
-        data[headerIndex] = srcData[i];
-    }
-
-    return data;
-}
-
 function parseComment(text, lineObj) {
     var projectDirectoryFromRoot = lineObj.projectDirectory;
     var fileParentFolderAbs = sourceLocalPathToAbsolutePath(fso.GetParentFolderName(lineObj.filePath), projectDirectoryFromRoot);
@@ -1186,25 +1131,6 @@ function parseUnorderedList(lineObj, line) {
     //    comment = comment.replace(/<br>/gi, "\n");
     //}
 
-    // table 形式でデータを記述できるように
-    var td = text.match(/^([^\|]+)\|(.*)\|$/);
-    var data = undefined;
-    if (td) {
-        // TODO: 画像対応
-        text = td[1].trim();
-        data = td[2].split("|");
-        for (var i = 0; i < data.length; i++) {
-            data[i] = data[i].trim();
-        }
-
-        data = getDataFromTableRow(data, stack.peek());
-
-        if (!data) {
-            var errorMessage = "シートに該当IDの確認欄がありません";
-            throw new ParseError(errorMessage, lineObj);
-        }
-    }
-
     // １行のみ、行全体以外は対応しない
     var link = text.trim().match(/^\[(.+)\]\((.+)\)$/);
     var url = undefined;
@@ -1232,7 +1158,6 @@ function parseUnorderedList(lineObj, line) {
         depthInGroup: -1,   // 場所確保のため一旦追加
         id: uid,
         text: text,
-        tableData: data,
         comment: comment,
         imageFilePath: imageFilePath,
         initialValues: initialValues,
@@ -1410,33 +1335,6 @@ while (!srcLines.atEnd) {
         continue;
     }
     
-
-    // ol も node にしておこうと思ったけど、leaf は必ず ul であることが前提の作りになっているので、諦める
-    var th = line.match(/^\s*\|(.*)\|\s*$/);
-    if (th) {
-        var parent = stack.peek();
-        if (parent.kind != kindH || parent.level != 1) {
-            MyError("番号付きリストは H1 の直下以外には作れません");
-        }
-        parent.tableHeaders = [];
-        th = th[1].split("|");
-        for (var i = 0; i < th.length; i++) {
-            var s = th[i].trim();
-            var name_description = s.match(/^\[(.+)\]\(\s*\"(.+)\"\s*\)$/);
-            var item = {};
-            if (name_description) {
-                item.name = name_description[1];
-                item.description = name_description[2];
-            }
-            else {
-                item.name = s;
-            }
-            item.id = i + 1;
-            parent.tableHeaders.push(item);
-        }
-        continue;
-    }
-
     if (/^\s*```yaml\s*$/.test(line)) {
         var topLineObj = lineObj;
         var parent = stack.peek();
