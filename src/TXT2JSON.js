@@ -160,9 +160,9 @@ function absorbContinuations(reader, text, baseline, options) {
     function isStructuralStart(s) {
         if (!useGuard) return false;
         var t = String(s).trim();
+        // OL は H node の直下のみの想定なので、 OL の判定 /^\s*\d+\.\s+/.test(s) はしてはいけない
         return /^#{1,6}\s+/.test(t)      // 見出し
             || /^\s*[\*\+\-]\s+/.test(s) // UL
-            || /^\s*\d+\.\s+/.test(s)    // OL
             || /^&[A-Za-z_]\w*\s*\(/.test(t) // &Name( 宣言
             || /^\*[A-Za-z_]\w*\s*\(/.test(t) // *Call(
             || /^@[A-Za-z_]\w*:/.test(t)    // ディレクティブ（@xxx:）
