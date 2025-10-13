@@ -299,22 +299,6 @@ function parseArgs() {
     return WScript.Arguments.Unnamed(0);
 }
 
-function loadGlobalConfig() {
-
-    var confFilePath = "conf.yml";
-    confFilePath = fso.BuildPath(fso.GetParentFolderName(WScript.ScriptFullName), confFilePath);
-    if (!fso.FileExists(confFilePath)) {
-        return;
-    }
-    var data = CL.readYAMLFile(confFilePath);
-
-    // include文法のパス用
-    if (!_.isUndefined(data.includePath)) {
-        includePath = includePath.concat(data.includePath);
-    }
-
-}
-
 function computeRootId() {
 
     // root.children を基に hash を求める
@@ -377,16 +361,22 @@ function makeLineinfoString(filePath, lineNum) {
 
 function getRelativePath(filePath, rootFilePath, fso) {
     if (typeof fso === "undefined") {
-        fso = new ActiveXObject( "Scripting.FileSystemObject" );
+        fso = new ActiveXObject("Scripting.FileSystemObject");
     }
 
-    var rootFileFolderName = fso.GetParentFolderName(rootFilePath);
+    var absFile = fso.GetAbsolutePathName(filePath);
+    var rootDir = fso.GetParentFolderName(fso.GetAbsolutePathName(rootFilePath));
 
-    if (!_.startsWith(filePath, rootFileFolderName)) {
+    // 比較用に区切りと大文字/小文字を正規化
+    var a = absFile.replace(/\//g, "\\").toLowerCase();
+    var b = rootDir.replace(/\//g, "\\").toLowerCase();
+
+    if (a.indexOf(b + "\\") !== 0) {
         return null;
     }
 
-    return filePath.slice(rootFileFolderName.length + 1);
+    // 返り値は元の大小を保った相対パス
+    return absFile.slice(rootDir.length + 1);
 }
 
 var ParseError = function(errorMessage, lineObj) {
@@ -487,16 +477,6 @@ var backupDirectoryName = "bak";
 
 // 中間生成ファイル置き場
 var intermediateDirectoryName = "intermediate";
-
-var includePath = [];
-
-// メインソースファイルのrootフォルダはデフォルトで最優先で探す
-includePath.push(fso.GetParentFolderName(filePath));
-
-// グローバルな設定
-// 現状 includePath のみ
-// FIXME: 廃止予定
-loadGlobalConfig();
 
 function readVarsFile(varsFileName) {
     var varsFilePath = fso.BuildPath(fso.GetParentFolderName(filePath), varsFileName);

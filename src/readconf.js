@@ -11,11 +11,6 @@
     //var index = CL.readYAMLFile(indexFilePath);
     //printJSON(index);
 
-    // include文法のパス用
-    if (!_.isUndefined(data.includePath)) {
-        includePath = includePath.concat(data.includePath);
-    }
-
     function processFunctions(data) {
         if (_.isUndefined(data.$functions)) {
             return;
